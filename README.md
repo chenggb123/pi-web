@@ -1,16 +1,14 @@
-# pi-web
+# Pi Agent Web
 
-[pi 编程智能体](https://github.com/badlogic/pi-mono) 的网页界面。在浏览器中浏览会话、与智能体对话、分叉对话、切换消息分支。
+[pi 编程智能体](https://github.com/badlogic/pi-mono) 的 Web 管理界面。支持多用户、角色权限、文件管理、Office 预览。
 
 ## 快速开始
-
-**无需安装，直接运行：**
 
 ```bash
 npx @agegr/pi-web@latest
 ```
 
-**或全局安装后使用：**
+或全局安装：
 
 ```bash
 npm install -g @agegr/pi-web
@@ -19,57 +17,114 @@ pi-web
 
 启动后打开 [http://localhost:30141](http://localhost:30141)。
 
-**可选参数：**
+**启动参数：**
 
 ```bash
-pi-web --port 8080               # 自定义端口
-pi-web --hostname 127.0.0.1      # 仅本机访问
-pi-web -p 8080 -H 127.0.0.1     # 组合使用
-
-PORT=8080 pi-web                 # 也支持环境变量
+pi-web --port 8080            # 自定义端口
+pi-web -p 8080 -H 127.0.0.1  # 仅本机
+PORT=8080 pi-web              # 环境变量
 ```
 
-## 功能介绍
+## 功能概览
 
-- **会话浏览器** — 按工作目录分组展示所有 pi 会话
-- **实时对话** — 通过 SSE 流式输出与智能体实时交互
-- **会话分叉** — 从任意用户消息创建独立的新会话分支
-- **会话内分支** — 回退到任意节点继续对话，在同一文件内创建分支
-- **分支导航器** — 可视化切换同一会话内的各个分支
-- **模型切换** — 对话中途随时切换模型
-- **工具面板** — 控制智能体可使用的工具
-- **压缩会话** — 对长会话进行摘要，节省上下文窗口
-- **引导 / 追加** — 打断正在运行的智能体，或在其完成后追加消息
+### 用户与权限
 
-## 注意事项
+- **多用户系统** — 首次访问引导创建管理员账号，支持多用户注册
+- **角色权限配置** — 6 项可配置权限：Models 管理、Skills 管理、全局 Skills、用户管理、完整工具集、文件删除
+- **角色管理 UI** — 管理员可创建/编辑角色，灵活勾选权限
+- **权限驱动菜单** — 侧边栏菜单项根据用户权限动态显示
 
-- **数据目录** — 默认读取 `~/.pi/agent/sessions` 下的会话文件。可通过环境变量 `PI_CODING_AGENT_DIR` 指定其他目录。
-- **模型配置** — 从智能体数据目录下的 `models.json` 读取可用模型，可在侧边栏的「Models」面板中编辑。
-- **文件浏览** — 侧边栏内置文件浏览器，可在标签页中查看当前工作目录下的文件。
+### 会话与对话
+
+- **会话管理** — 按工作目录分组，支持重命名、删除、分叉
+- **实时对话** — SSE 流式输出，支持模型切换、思考等级、工具预设
+- **工作空间隔离** — 每个用户独立的 `~/pi-cwd/<username>` 工作目录，不可切换
+- **文件上传** — 支持图片和文件上传，自动保存到 `.pi-uploads/` 目录并告知 AI 路径
+- **Steer / Follow-up** — 中断或追加消息
+
+### 文件管理
+
+- **文件浏览器** — 侧边栏树形文件列表，支持文件删除（含二次确认）
+- **文件预览** — 语法高亮（60+ 语言）、Markdown/HTML 预览、Diff 对比、Live watch
+- **图片预览** — 支持 png/jpg/gif/webp/svg 等，实时刷新
+- **音频播放** — 支持 mp3/wav/ogg/flac 等格式
+- **PDF 预览** — 浏览器原生渲染
+- **Office 预览** — Word/Excel/PPT 文本提取（mammoth.js），深色模式适配
+
+### 自定义
+
+- **应用名称** — 管理员可在 Settings 中自定义应用名称，登录页/侧边栏/聊天页同步更新
+- **模型配置** — Models 面板管理 providers、API Keys、模型列表
+- **Skills 管理** — 搜索、安装、启用/禁用 Skills，支持项目级和全局级
+
+## 权限说明
+
+| 权限 | 控制范围 |
+|------|---------|
+| `models:write` | Model 配置管理、应用 Settings |
+| `skills:write` | Skills 安装/启用/禁用 |
+| `skills:global` | 全局 Skills 管理 |
+| `users:manage` | 用户管理和角色权限配置 |
+| `agent:full_tools` | 使用全部 7 个 Agent 工具 |
+| `files:delete` | 删除工作空间文件 |
+
+默认角色：
+- **Administrator** — 全部 6 项权限
+- **User** — 仅 `skills:write`（项目级）
+
+## 环境变量
+
+| 变量 | 说明 |
+|------|------|
+| `PI_CODING_AGENT_DIR` | Agent 数据目录，默认 `~/.pi/agent` |
+| `PI_WEB_ADMIN_PASSWORD` | 首次启动自动创建 admin 用户 |
 
 ## 开发
 
 ```bash
 npm install
-npm run dev   # 端口 30141
+npm run dev       # 端口 30141
+npm run build     # 生产构建 (webpack)
+npm run start     # 生产启动
 ```
+
+**类型检查:** `npx tsc --noEmit`
 
 ## 项目结构
 
 ```
 app/
   api/
-    sessions/      # 读写会话文件
-    agent/         # 发送命令、SSE 事件流
-    files/         # 文件内容读取
-    models/        # 可用模型列表与默认模型
-    models-config/ # 读写 models.json
-components/        # UI 组件
+    admin/         # 用户/角色/权限/设置 CRUD
+    agent/         # Agent 会话、SSE 事件流
+    auth/          # OAuth/API Key 认证
+    files/         # 文件列表/读取/上传/删除
+    models/        # 模型列表与配置
+    sessions/      # 会话文件读写
+    skills/        # Skills 搜索/安装/切换
+  login/           # 登录/注册页面
+components/        # React UI 组件
+hooks/             # useAgentSession, useTheme 等
 lib/
-  session-reader.ts  # 解析 .jsonl 会话文件
-  rpc-manager.ts     # 管理 AgentSession 生命周期
-  normalize.ts       # 规范化 toolCall 字段名
+  db.ts            # JSON 数据库（用户/角色/会话）
+  user-auth.ts     # 认证与权限检查
+  rpc-manager.ts   # AgentSession 生命周期
+  session-reader.ts # .jsonl 会话解析
   types.ts
 ```
 
-会话文件存储路径：`~/.pi/agent/sessions/<编码后的工作目录>/<时间戳>_<uuid>.jsonl`
+## 数据存储
+
+| 文件 | 内容 |
+|------|------|
+| `~/.pi/agent/users_db.json` | 用户账号 |
+| `~/.pi/agent/roles.json` | 角色与权限配置 |
+| `~/.pi/agent/sessions.json` | 登录会话 |
+| `~/.pi/agent/app-settings.json` | 应用设置 |
+| `~/.pi/agent/models.json` | 模型配置 |
+| `~/.pi/agent/sessions/` | 对话记录 (.jsonl) |
+| `~/pi-cwd/<user>/` | 用户工作空间 |
+
+## License
+
+MIT
