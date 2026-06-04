@@ -1,27 +1,37 @@
 {
-  "name": "@agegr/pi-web",
+  "name": "@chenggb123/pi-web",
   "version": "0.7.0",
-  "description": "Web UI for the pi coding agent",
+  "description": "Pi Agent Web - Multi-user web UI with role permissions, file management, Office preview",
   "license": "MIT",
   "bin": {
     "pi-web": "bin/pi-web.js"
   },
   "files": [
     "bin",
-    ".next",
-    "!.next/cache",
-    "!.next/dev",
-    "!.next/**/*.js.map",
+    "app",
+    "components",
+    "hooks",
+    "lib",
     "public",
+    "docs",
     "next.config.ts",
-    "package.json"
+    "tsconfig.json",
+    "postcss.config.mjs",
+    "tailwind.config.ts",
+    "eslint.config.mjs",
+    "package.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "LICENSE",
+    ".gitignore"
   ],
   "scripts": {
     "dev": "next dev -p 30141",
     "build": "next build --webpack",
-    "start": "next start -p 30141",
+    "start": "next dev -p 30141",
     "lint": "eslint .",
-    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+    "release": "npm version patch --no-git-tag-version && npm publish --access public"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.75.5",
@@ -33,7 +43,8 @@
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "mammoth": "^1.9.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
