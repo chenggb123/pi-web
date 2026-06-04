@@ -65,6 +65,7 @@ export function AppShell() {
   const [userManagementOpen, setUserManagementOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [personalInfoOpen, setPersonalInfoOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
@@ -382,7 +383,7 @@ export function AppShell() {
 
             <MenuItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>}
               label="Skills" onClick={() => { setUserMenuOpen(false); setSkillsConfigOpen(true); }}
-              disabled={currentUser?.role !== "admin" || (!activeCwd && !selectedSession?.cwd && !newSessionCwd)} />
+              disabled={!activeCwd && !selectedSession?.cwd && !newSessionCwd} />
 
             {currentUser?.role === "admin" && (
               <MenuItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>}
@@ -391,6 +392,10 @@ export function AppShell() {
 
             {/* Divider */}
             <div style={{ margin: "4px 8px", borderTop: "1px solid var(--border)" }} />
+
+            {/* About */}
+            <MenuItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>}
+              label="About" onClick={() => { setUserMenuOpen(false); setAboutOpen(true); }} />
 
             {/* Personal Info */}
             <MenuItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>}
@@ -678,6 +683,7 @@ export function AppShell() {
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}
               onContextUsageChange={handleContextUsageChange}
+              maxToolPreset={currentUser?.role === "admin" ? "full" : "default"}
             />
           ) : showPlaceholder ? (
             activeCwd ? (
@@ -758,13 +764,34 @@ export function AppShell() {
     </button>
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
-      <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
+      <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} userRole={currentUser?.role} />
     )}
     {userManagementOpen && currentUser && (
       <UserManagementModal
         currentUserId={currentUser.id}
         onClose={() => setUserManagementOpen(false)}
       />
+    )}
+    {aboutOpen && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        onClick={(e) => { if (e.target === e.currentTarget) setAboutOpen(false); }}>
+        <div style={{ width: 360, maxWidth: "calc(100vw - 32px)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>About</span>
+            <button onClick={() => setAboutOpen(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>
+          </div>
+          <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>Pi Agent Web</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+              <div>Web UI: v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</div>
+              <div>PI Core: v{process.env.NEXT_PUBLIC_PI_VERSION ?? "unknown"}</div>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid var(--border)", padding: "12px 18px", display: "flex", justifyContent: "center" }}>
+            <button onClick={() => setAboutOpen(false)} style={{ padding: "6px 24px", background: "var(--accent)", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Close</button>
+          </div>
+        </div>
+      </div>
     )}
     {personalInfoOpen && currentUser && (
       <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}

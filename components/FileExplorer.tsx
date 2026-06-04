@@ -25,6 +25,7 @@ interface Props {
   onOpenFile: (filePath: string, fileName: string) => void;
   refreshKey?: number;
   onAtMention?: (relativePath: string) => void;
+  onFileDeleted?: () => void;
 }
 
 async function fetchEntries(dirPath: string): Promise<FileNode[]> {
@@ -51,6 +52,7 @@ function TreeNode({
   expandedPaths,
   onToggleExpanded,
   refreshKey,
+  onFileDeleted,
 }: {
   node: FileNode;
   depth: number;
@@ -60,12 +62,15 @@ function TreeNode({
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
   refreshKey?: number;
+  onFileDeleted?: () => void;
 }) {
   const open = expandedPaths.has(node.fullPath);
   const [children, setChildren] = useState<FileNode[]>(node.children ?? []);
   const [loaded, setLoaded] = useState(node.loaded ?? false);
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadChildren = useCallback(async (force = false) => {
     if (loaded && !force) return;
@@ -94,6 +99,31 @@ function TreeNode({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  const handleDelete = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmDelete) {
+      setDeleting(true);
+      try {
+        const encoded = encodeFilePathForApi(node.fullPath);
+        const res = await fetch(`/api/files/${encoded}`, { method: "DELETE" });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string };
+          alert(d.error ?? "Failed to delete");
+        } else {
+          onFileDeleted?.();
+        }
+      } catch {
+        alert("Failed to delete file");
+      } finally {
+        setDeleting(false);
+        setConfirmDelete(false);
+      }
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 4000);
+    }
+  }, [confirmDelete, node.fullPath, onFileDeleted]);
 
   const handleClick = useCallback(() => {
     if (node.isDir) {
@@ -156,46 +186,74 @@ function TreeNode({
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
           </svg>
         )}
-        {onAtMention && hovered && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAtMention(getRelativeFilePath(node.fullPath, cwd));
-            }}
-            title="Insert path into chat"
-            style={{
-              position: "absolute",
-              right: 4,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              padding: "0 8px",
-              height: 20,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--accent)",
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="4" />
-              <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
-            </svg>
-            mention
-          </button>
+        {hovered && !confirmDelete && (
+          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 4, alignItems: "center" }}>
+            {onAtMention && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onAtMention(getRelativeFilePath(node.fullPath, cwd)); }}
+                title="Insert path into chat"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                  padding: "0 8px", height: 20, background: "var(--bg-panel)",
+                  border: "1px solid var(--border)", borderRadius: 4, color: "var(--accent)",
+                  cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap",
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+                </svg>
+                mention
+              </button>
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete file"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 22, height: 22, padding: 0, background: "none",
+                border: "1px solid transparent", borderRadius: 4,
+                color: "var(--text-dim)", cursor: "pointer",
+                transition: "color 0.12s, border-color 0.12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.borderColor = "transparent"; }}
+            >
+              {deleting ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+        {confirmDelete && (
+          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#ef4444", whiteSpace: "nowrap" }}>Delete?</span>
+            <button onClick={handleDelete} disabled={deleting} style={{
+              padding: "0 6px", height: 18, background: "#ef4444", border: "none", borderRadius: 3,
+              color: "#fff", cursor: "pointer", fontSize: 10, fontWeight: 600,
+            }}>
+              Yes
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }} style={{
+              padding: "0 6px", height: 18, background: "none", border: "1px solid var(--border)", borderRadius: 3,
+              color: "var(--text-muted)", cursor: "pointer", fontSize: 10,
+            }}>
+              No
+            </button>
+          </div>
         )}
       </div>
       {node.isDir && open && (
         <div>
           {children.map((child) => (
-            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} />
+            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} onFileDeleted={onFileDeleted} />
           ))}
           {children.length === 0 && loaded && (
             <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
@@ -208,7 +266,7 @@ function TreeNode({
   );
 }
 
-export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props) {
+export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention, onFileDeleted }: Props) {
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +325,7 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
           expandedPaths={expandedPaths}
           onToggleExpanded={handleToggleExpanded}
           refreshKey={refreshKey}
+          onFileDeleted={onFileDeleted}
         />
       ))}
       {roots.length === 0 && (

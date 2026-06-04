@@ -22,6 +22,8 @@ interface FileData {
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "oga", "opus", "m4a", "aac", "flac", "weba", "webm"]);
+const PDF_EXT = "pdf";
+const OFFICE_EXTS = new Set(["docx", "xlsx", "pptx"]);
 
 function isImagePath(filePath: string): boolean {
   const base = getFileName(filePath);
@@ -521,12 +523,114 @@ function AudioViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
   );
 }
 
+function PdfViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
+  const { isDark } = useTheme();
+  const encoded = encodeFilePathForApi(filePath);
+  const src = `/api/files/${encoded}?type=read`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "4px 16px", borderBottom: "1px solid var(--border)",
+        fontSize: 11, color: "var(--text-dim)", background: "var(--bg)", flexShrink: 0,
+      }}>
+        <span style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
+          {getRelativeFilePath(filePath, cwd)}
+        </span>
+        <span style={{ marginLeft: "auto" }}>PDF</span>
+      </div>
+      <iframe
+        src={src}
+        style={{
+          flex: 1, width: "100%", border: "none",
+          background: isDark ? "#1a1a1a" : "#fff",
+        }}
+        title="PDF preview"
+      />
+    </div>
+  );
+}
+
+function OfficeViewer({ filePath, cwd, ext }: { filePath: string; cwd?: string; ext: string }) {
+  const { isDark } = useTheme();
+  const [content, setContent] = useState<string | null>(null);
+  const [isHtml, setIsHtml] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setContent(null);
+    setIsHtml(false);
+    const encoded = encodeFilePathForApi(filePath);
+    fetch(`/api/files/${encoded}?type=read&dark=${isDark ? "1" : "0"}`)
+      .then((r) => r.json())
+      .then((d: { content?: string; language?: string; error?: string }) => {
+        if (d.error) { setError(d.error); return; }
+        setContent(d.content ?? "");
+        setIsHtml(d.language === "html");
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [filePath]);
+
+  if (loading) {
+    return <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>Loading...</div>;
+  }
+  if (error) {
+    return <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: 13 }}>{error}</div>;
+  }
+
+  const label: Record<string, string> = { docx: "Word", xlsx: "Excel", pptx: "PowerPoint" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "4px 16px", borderBottom: "1px solid var(--border)",
+        fontSize: 11, color: "var(--text-dim)", background: "var(--bg)", flexShrink: 0,
+      }}>
+        <span style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
+          {getRelativeFilePath(filePath, cwd)}
+        </span>
+        <span style={{ marginLeft: "auto" }}>{label[ext] ?? ext}</span>
+      </div>
+      {isHtml ? (
+        <iframe
+          srcDoc={content ?? ""}
+          sandbox="allow-scripts"
+          style={{ flex: 1, width: "100%", border: "none", background: isDark ? "#1a1a1a" : "#fff" }}
+          title="Office preview"
+        />
+      ) : (
+        <div style={{
+          flex: 1, overflow: "auto", padding: "16px 20px",
+          fontFamily: "var(--font-mono)", fontSize: 13, lineHeight: 1.7,
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          color: "var(--text)", background: isDark ? "#1a1a1a" : "#fff",
+        }}>
+          {content || "(no text content)"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FileViewer({ filePath, cwd }: Props) {
+  const ext = getFileName(filePath).toLowerCase().split(".").pop() ?? "";
   if (isImagePath(filePath)) {
     return <ImageViewer filePath={filePath} cwd={cwd} />;
   }
   if (isAudioPath(filePath)) {
     return <AudioViewer filePath={filePath} cwd={cwd} />;
+  }
+  if (ext === PDF_EXT) {
+    return <PdfViewer filePath={filePath} cwd={cwd} />;
+  }
+  if (OFFICE_EXTS.has(ext)) {
+    return <OfficeViewer filePath={filePath} cwd={cwd} ext={ext} />;
   }
   return <TextFileViewer filePath={filePath} cwd={cwd} />;
 }

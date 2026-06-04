@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
-import { requireRole } from "@/lib/user-auth";
+import { requireRole, getCurrentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -8,14 +8,18 @@ const ANSI_RE = /\x1B\[[0-9;]*m/g;
 
 // POST /api/skills/install  body: { package: string; scope: "global" | "project"; cwd?: string }
 export async function POST(req: Request) {
-  const auth = requireRole(req, "admin");
+  // Any authenticated user can install skills
+  const auth = requireRole(req, "user");
   if (!auth.ok) return auth.response;
 
   try {
     const { package: pkg, scope, cwd } = await req.json() as { package?: string; scope?: string; cwd?: string };
     if (!pkg?.trim()) return NextResponse.json({ error: "package required" }, { status: 400 });
 
-    const isGlobal = scope !== "project";
+    // Non-admin users can only install project-scoped skills
+    const isAdmin = auth.user.role === "admin";
+    const effectiveScope = isAdmin ? (scope ?? "global") : "project";
+    const isGlobal = effectiveScope !== "project";
     const args = ["skills", "add", pkg.trim(), "-y", "--agent", "pi"];
     if (isGlobal) args.push("-g");
 

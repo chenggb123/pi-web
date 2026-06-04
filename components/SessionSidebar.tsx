@@ -368,7 +368,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <PiAgentTitle />
+          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: "var(--text)", fontFamily: "var(--font-mono)" }}>Pi Agent Web</div>
           <div style={{ display: "flex", gap: 6 }}>
             <button
               onClick={handleNewSession}
@@ -782,6 +782,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 onOpenFile={onOpenFile ?? (() => {})}
                 refreshKey={explorerKey}
                 onAtMention={onAtMention}
+                onFileDeleted={() => setExplorerKey((k) => k + 1)}
               />
             </div>
           )}

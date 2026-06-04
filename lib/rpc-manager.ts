@@ -161,23 +161,41 @@ export class AgentSessionWrapper {
       }
 
       case "compact": {
-        // pi's compact() does not guard against empty messagesToSummarize — use findCutPoint
-        // to pre-check and throw a clean error instead of generating a useless empty summary.
-        const { findCutPoint, DEFAULT_COMPACTION_SETTINGS } = await import("@earendil-works/pi-coding-agent");
-        const pathEntries = this.inner.sessionManager.getBranch() as Array<{ type: string }>;
-        const settings = { ...DEFAULT_COMPACTION_SETTINGS, ...this.inner.settingsManager.getCompactionSettings() };
-        let prevCompactionIndex = -1;
-        for (let i = pathEntries.length - 1; i >= 0; i--) {
-          if (pathEntries[i].type === "compaction") { prevCompactionIndex = i; break; }
+        try {
+          const { findCutPoint, DEFAULT_COMPACTION_SETTINGS } = await import("@earendil-works/pi-coding-agent");
+          const pathEntries = this.inner.sessionManager.getBranch() as Array<{ type: string }>;
+          const settings = { ...DEFAULT_COMPACTION_SETTINGS, ...this.inner.settingsManager.getCompactionSettings() };
+
+          // Guard: need at least a few entries to compact (header + 2 turns minimum)
+          const messageCount = pathEntries.filter((e) => e.type === "message").length;
+          if (messageCount < 4) {
+            return { compacted: false, message: "对话内容太少，至少需要几轮对话才能压缩" };
+          }
+
+          let prevCompactionIndex = -1;
+          for (let i = pathEntries.length - 1; i >= 0; i--) {
+            if (pathEntries[i].type === "compaction") { prevCompactionIndex = i; break; }
+          }
+          const boundaryStart = prevCompactionIndex + 1;
+
+          // Guard: nothing new since last compaction
+          if (boundaryStart >= pathEntries.length - 1) {
+            return { compacted: false, message: "自上次压缩后没有新的对话内容" };
+          }
+
+          const cutPoint = findCutPoint(pathEntries as never, boundaryStart, pathEntries.length, settings.keepRecentTokens);
+          const historyEnd = cutPoint.isSplitTurn ? cutPoint.turnStartIndex : cutPoint.firstKeptEntryIndex;
+          if (historyEnd <= boundaryStart) {
+            return { compacted: false, message: "对话内容太少，无需压缩" };
+          }
+
+          const result = await this.inner.compact(command.customInstructions as string | undefined);
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // Re-throw with a friendlier prefix so the UI can show a useful message
+          throw new Error(`压缩失败: ${msg}`);
         }
-        const boundaryStart = prevCompactionIndex + 1;
-        const cutPoint = findCutPoint(pathEntries as never, boundaryStart, pathEntries.length, settings.keepRecentTokens);
-        const historyEnd = cutPoint.isSplitTurn ? cutPoint.turnStartIndex : cutPoint.firstKeptEntryIndex;
-        if (historyEnd <= boundaryStart) {
-          throw new Error("Conversation too short to compact");
-        }
-        const result = await this.inner.compact(command.customInstructions as string | undefined);
-        return result;
       }
 
       case "set_auto_compaction": {
@@ -274,7 +292,8 @@ export async function startRpcSession(
   sessionId: string,
   sessionFile: string,
   cwd: string,
-  toolNames?: string[]
+  toolNames?: string[],
+  userRole?: string
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const registry = getRegistry();
   const locks = getLocks();
@@ -319,6 +338,21 @@ export async function startRpcSession(
     // the only way to truly clear it is to call agent.setSystemPrompt directly.
     if (toolNames?.length === 0) {
       inner.agent.state.systemPrompt = "";
+    }
+
+    // Inject role-aware system prompt for regular users
+    if (userRole === "user") {
+      const basePrompt = inner.agent.state.systemPrompt ?? "";
+      const roleNotice = [
+        "",
+        "---",
+        "[SYSTEM] 你正在协助一名普通用户。请遵守以下限制：",
+        "- 不要修改全局 skill、系统设置或安装插件",
+        "- 可以修改项目级 skill（位于当前工作目录内的 skill）",
+        "- 使用 read/bash/edit/write 工具完成用户的编码任务",
+        "---",
+      ].join("\n");
+      inner.agent.state.systemPrompt = roleNotice + "\n" + basePrompt;
     }
 
     const wrapper = new AgentSessionWrapper(inner);

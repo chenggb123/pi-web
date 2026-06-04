@@ -227,6 +227,24 @@ export function makeClearCookie(): string {
   return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0`;
 }
 
+// ── Permission Helpers ─────────────────────────────────────────────────────────
+
+export function getMaxToolPreset(user: User): "full" | "default" {
+  return user.role === "admin" ? "full" : "default";
+}
+
+export function canManageGlobalSkills(user: User): boolean {
+  return user.role === "admin";
+}
+
+export function canManageModels(user: User): boolean {
+  return user.role === "admin";
+}
+
+export function canManageUsers(user: User): boolean {
+  return user.role === "admin";
+}
+
 // ── Route Helpers ──────────────────────────────────────────────────────────────
 
 /** Get the current user from request cookies, or null if not authenticated. */

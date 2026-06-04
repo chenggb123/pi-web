@@ -95,7 +95,7 @@ function parseInstallCount(installs: string): number {
 
 // POST /api/skills/search  body: { query: string, limit?: number }
 export async function POST(req: Request) {
-  const auth = requireRole(req, "admin");
+  const auth = requireRole(req, "user");
   if (!auth.ok) return auth.response;
 
   try {

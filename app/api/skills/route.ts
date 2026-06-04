@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { DefaultResourceLoader, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { requireRole } from "@/lib/user-auth";
+import { requireRole, getCurrentUser, canManageGlobalSkills } from "@/lib/user-auth";
+import { homedir } from "os";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,25 @@ export async function GET(req: Request) {
 
 // PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file
 export async function PATCH(req: Request) {
-  const auth = requireRole(req, "admin");
+  // Any authenticated user can toggle skills, but only on their scope
+  const auth = requireRole(req, "user");
   if (!auth.ok) return auth.response;
+
+  // Non-admin users cannot modify global skills (outside home dir or agent dir)
+  if (auth.user.role !== "admin") {
+    const body = await req.clone().json() as { filePath?: string };
+    const home = homedir();
+    const agentDir = getAgentDir();
+    if (body.filePath) {
+      const isGlobal = body.filePath.startsWith(home) || body.filePath.startsWith(agentDir);
+      if (isGlobal) {
+        return NextResponse.json(
+          { error: "不能修改全局 skill，只能修改项目级 skill" },
+          { status: 403 },
+        );
+      }
+    }
+  }
 
   try {
     const body = await req.json() as { filePath: string; disableModelInvocation: boolean };

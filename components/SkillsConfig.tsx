@@ -83,13 +83,17 @@ function SkillDetail({
   onToggle,
   toggling,
   saveError,
+  isAdmin,
 }: {
   skill: Skill;
   cwd: string;
   onToggle: (skill: Skill) => void;
   toggling: boolean;
   saveError: string | null;
+  isAdmin: boolean;
 }) {
+  const isGlobal = sourceLabel(skill) === "global";
+  const toggleDisabled = !isAdmin && isGlobal;
   const label = sourceLabel(skill);
   const enabled = !skill.disableModelInvocation;
 
@@ -136,8 +140,8 @@ function SkillDetail({
         </span>
         <Toggle
           enabled={enabled}
-          loading={toggling}
-          onToggle={() => onToggle(skill)}
+          loading={toggling || toggleDisabled}
+          onToggle={() => { if (!toggleDisabled) onToggle(skill); }}
         />
         {saveError && (
           <span style={{ fontSize: 12, color: "#f87171", flexShrink: 0 }}>
@@ -182,9 +186,11 @@ function SkillDetail({
 function AddSkillPanel({
   cwd,
   onInstalled,
+  isAdmin,
 }: {
   cwd: string;
   onInstalled: () => void;
+  isAdmin: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SkillSearchResult[]>([]);
@@ -193,7 +199,7 @@ function AddSkillPanel({
   const [installing, setInstalling] = useState<string | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   const [installedPkgs, setInstalledPkgs] = useState<Set<string>>(new Set());
-  const [scope, setScope] = useState<"global" | "project">("global");
+  const [scope, setScope] = useState<"global" | "project">(isAdmin ? "global" : "project");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -314,7 +320,8 @@ function AddSkillPanel({
           </button>
         </div>
 
-        {/* Scope + install path row */}
+        {/* Scope + install path row — admin only */}
+        {isAdmin && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
@@ -358,6 +365,12 @@ function AddSkillPanel({
             → {installPath}
           </span>
         </div>
+        )}
+        {!isAdmin && (
+          <div style={{ fontSize: 12, color: "var(--text-dim)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            → {installPath}
+          </div>
+        )}
 
         {/* Errors */}
         {searchError && (
@@ -509,10 +522,13 @@ function AddSkillPanel({
 export function SkillsConfig({
   cwd,
   onClose,
+  userRole,
 }: {
   cwd: string;
   onClose: () => void;
+  userRole?: string;
 }) {
+  const isAdmin = userRole === "admin";
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -531,13 +547,25 @@ export function SkillsConfig({
           setError(d.error);
           return;
         }
-        const list = d.skills ?? [];
+        let list = d.skills ?? [];
+        // Non-admin users: filter out global skills entirely
+        if (!isAdmin) {
+          list = list.filter((s) => sourceLabel(s) !== "global");
+        }
         setSkills(list);
-        if (list.length > 0 && !selected) setSelected(list[0].filePath);
+        // Only auto-select if current selection is still valid
+        if (list.length > 0) {
+          setSelected((prev) => {
+            if (prev && list.some((s) => s.filePath === prev)) return prev;
+            return list[0].filePath;
+          });
+        } else {
+          setSelected(null);
+        }
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [cwd, selected]);
+  }, [cwd, isAdmin]);
 
   useEffect(() => {
     loadSkills();
@@ -703,7 +731,8 @@ export function SkillsConfig({
               ) : (
                 (() => {
                   const groups: { label: string; skills: typeof skills }[] = [];
-                  for (const grpLabel of ["project", "global", "path"]) {
+                  const allowedLabels = isAdmin ? ["project", "global", "path"] : ["project", "path"];
+                  for (const grpLabel of allowedLabels) {
                     const grpSkills = skills.filter(
                       (s) => sourceLabel(s) === grpLabel,
                     );
@@ -853,6 +882,7 @@ export function SkillsConfig({
                 onInstalled={() => {
                   loadSkills();
                 }}
+                isAdmin={isAdmin}
               />
             ) : loading ? null : selectedSkill ? (
               <SkillDetail
@@ -862,6 +892,7 @@ export function SkillsConfig({
                 onToggle={toggle}
                 toggling={toggling.has(selectedSkill.filePath)}
                 saveError={saveError}
+                isAdmin={isAdmin}
               />
             ) : (
               <div

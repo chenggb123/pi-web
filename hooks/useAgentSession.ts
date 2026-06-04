@@ -339,23 +339,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!message.trim() && !images?.length && !files?.length) return;
     if (agentRunning) return;
 
-    // Upload files to workspace .pi-uploads directory before sending
-    let filePaths: string[] = [];
-    if (files?.length) {
+    // Upload images and files to workspace .pi-uploads directory before sending
+    let savedPaths: string[] = [];
+    const allUploads: { name: string; data: string }[] = [
+      ...(images?.map((img) => ({ name: `image_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${img.mimeType.split("/")[1] ?? "png"}`, data: img.data })) ?? []),
+      ...(files?.map((f) => ({ name: f.name, data: f.data })) ?? []),
+    ];
+    if (allUploads.length > 0) {
       const cwd = newSessionCwd ?? session?.cwd;
       if (cwd) {
         try {
           const res = await fetch("/api/files/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              cwd,
-              files: files.map((f) => ({ name: f.name, data: f.data })),
-            }),
+            body: JSON.stringify({ cwd, files: allUploads }),
           });
           const d = (await res.json()) as { success?: boolean; files?: { name: string; path: string }[]; uploadDir?: string; error?: string };
           if (d.success && d.files) {
-            filePaths = d.files.map((f) => f.path);
+            savedPaths = d.files.map((f) => f.path);
           }
         } catch (e) {
           console.error("Failed to upload files:", e);
@@ -363,10 +364,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
     }
 
-    // Build the agent message with file paths
+    // Build the agent message with saved file/image paths
     let fileHint = "";
-    if (filePaths.length > 0) {
-      fileHint = `[Files saved to workspace, use your file tools to read them:\n${filePaths.map((p) => `  ${p}`).join("\n")}]\n\n`;
+    if (savedPaths.length > 0) {
+      fileHint = `[Files saved to workspace, use your file tools to read them:\n${savedPaths.map((p) => `  ${p}`).join("\n")}]\n\n`;
     }
     const agentMessage = fileHint + message.trim();
 
@@ -511,8 +512,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setIsCompacting(true);
     setCompactError(null);
     try {
-      await sendAgentCommand(sid, { type: "compact" });
-      await loadSession(sid, true);
+      const result = await sendAgentCommand<{ compacted?: boolean; message?: string }>(sid, { type: "compact" });
+      if (result && result.compacted === false && result.message) {
+        // Show info that compaction was skipped (auto-dismiss)
+        setCompactError(result.message);
+      } else {
+        await loadSession(sid, true);
+      }
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));
     } finally {

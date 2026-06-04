@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { startRpcSession } from "@/lib/rpc-manager";
+import { getCurrentUser, getMaxToolPreset } from "@/lib/user-auth";
+import { PRESET_DEFAULT } from "@/components/ToolPanel";
 
 // POST /api/agent/new  body: { cwd: string; type: string; message: string; ... }
 // Spawns a brand-new pi session and immediately sends the first command.
@@ -20,8 +22,19 @@ export async function POST(req: Request) {
     // Use a one-time key so startRpcSession's lock doesn't conflict with real session ids
     const { provider, modelId, toolNames, thinkingLevel, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: string; [key: string]: unknown };
 
+    // Enforce tool limits based on user role
+    const user = getCurrentUser(req);
+    let effectiveToolNames = toolNames;
+    if (user) {
+      const maxPreset = getMaxToolPreset(user);
+      if (maxPreset === "default") {
+        // Non-admin: restrict to DEFAULT preset tools only
+        effectiveToolNames = PRESET_DEFAULT;
+      }
+    }
+
     const tempKey = `__new__${Date.now()}`;
-    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, toolNames);
+    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, effectiveToolNames, user?.role);
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)
     // in sync so the new cwd is immediately readable via /api/files. Without this,
