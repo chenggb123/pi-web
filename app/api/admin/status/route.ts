@@ -20,6 +20,11 @@ export async function GET(req: Request) {
     return Response.json({ authenticated: false, needsSetup });
   }
 
+  // Get user permissions from the role
+  const { getUserRole } = await import("@/lib/db");
+  const role = getUserRole(user.id);
+  const permissions = role?.permissions ?? [];
+
   return Response.json({
     authenticated: true,
     needsSetup: false,
@@ -27,6 +32,7 @@ export async function GET(req: Request) {
       id: user.id,
       username: user.username,
       role: user.role,
+      permissions,
     },
     workspace: getUserWorkspace(user.username),
   });

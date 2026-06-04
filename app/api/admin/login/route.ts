@@ -14,7 +14,6 @@ export const dynamic = "force-dynamic";
 // POST /api/auth/login — login or first-run setup
 // Body: { username, password, setup?: boolean }
 export async function POST(req: Request) {
-  // Run migration on first login attempt
   await maybeMigrateFromEnv();
 
   let body: { username?: string; password?: string; setup?: boolean };

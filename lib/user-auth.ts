@@ -1,54 +1,24 @@
-import { randomBytes, scrypt, timingSafeEqual, randomUUID, createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { randomBytes, scrypt, timingSafeEqual, createHash } from "crypto";
+import * as db from "@/lib/db";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface User {
   id: string;
   username: string;
-  passwordHash: string; // "scrypt:<salt_hex>:<hash_hex>" or "sha256:<hash_hex>" (legacy)
-  role: "admin" | "user";
+  passwordHash: string;
+  role: string;
   createdAt: string;
 }
 
-interface UsersJson {
-  users: User[];
+export interface Role {
+  id: string;
+  label: string;
+  permissions: string[];
+  is_default: boolean;
 }
 
-export type Role = "admin" | "user";
-
-// ── Configuration ───────────────────────────────────────────────────────────────
-
-const COOKIE_NAME = "pi-web-session";
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-function getUsersPath(): string {
-  return join(getAgentDir(), "users.json");
-}
-
-// ── User Storage ───────────────────────────────────────────────────────────────
-
-function readUsersJson(): UsersJson {
-  const path = getUsersPath();
-  if (!existsSync(path)) return { users: [] };
-  try {
-    const data = JSON.parse(readFileSync(path, "utf8")) as UsersJson;
-    return { users: data.users ?? [] };
-  } catch {
-    return { users: [] };
-  }
-}
-
-function writeUsersJson(data: UsersJson): void {
-  const path = getUsersPath();
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2), "utf8");
-}
-
-// ── Password Hashing (scrypt) ──────────────────────────────────────────────────
+// ── Password Hashing ───────────────────────────────────────────────────────────
 
 const SCRYPT_KEYLEN = 64;
 const SCRYPT_SALT_LEN = 32;
@@ -69,15 +39,12 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  // Legacy: SHA-256 hashes from old admin-auth
   if (stored.startsWith("sha256:")) {
     const legacyHash = stored.slice(7);
     const submitted = createHash("sha256").update(password).digest("hex");
     if (legacyHash.length !== submitted.length) return false;
     return timingSafeEqual(Buffer.from(legacyHash, "hex"), Buffer.from(submitted, "hex"));
   }
-
-  // scrypt format: "scrypt:<salt_hex>:<hash_hex>"
   if (!stored.startsWith("scrypt:")) return false;
   const parts = stored.slice(7).split(":");
   if (parts.length !== 2) return false;
@@ -87,122 +54,97 @@ export async function verifyPassword(password: string, stored: string): Promise<
     const actualHash = await scryptAsync(password, salt, SCRYPT_KEYLEN);
     if (actualHash.length !== expectedHash.length) return false;
     return timingSafeEqual(actualHash, expectedHash);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 // ── User CRUD ──────────────────────────────────────────────────────────────────
 
-export function hasUsers(): boolean {
-  return readUsersJson().users.length > 0;
-}
+export function hasUsers(): boolean { return db.hasUsers(); }
 
 export function getUsers(): User[] {
-  return readUsersJson().users;
+  return db.getAllUsers().map((u) => ({
+    id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at,
+  }));
 }
 
 export function findUser(username: string): User | undefined {
-  return getUsers().find((u) => u.username === username);
+  const u = db.findUserByUsername(username);
+  if (!u) return undefined;
+  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
 }
 
 export function findUserById(id: string): User | undefined {
-  return getUsers().find((u) => u.id === id);
+  const u = db.findUserById(id);
+  if (!u) return undefined;
+  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
 }
 
-export function createUser(username: string, passwordHash: string, role: Role): User {
-  const data = readUsersJson();
-  const user: User = {
-    id: randomUUID(),
-    username,
-    passwordHash,
-    role,
-    createdAt: new Date().toISOString(),
-  };
-  data.users.push(user);
-  writeUsersJson(data);
-  return user;
+export function createUser(username: string, passwordHash: string, role: string): User {
+  const u = db.createUser(username, passwordHash, role);
+  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
 }
 
 export function updateUser(
   id: string,
-  updates: { username?: string; passwordHash?: string; role?: Role },
+  updates: { username?: string; passwordHash?: string; role?: string },
 ): User | undefined {
-  const data = readUsersJson();
-  const idx = data.users.findIndex((u) => u.id === id);
-  if (idx === -1) return undefined;
-  data.users[idx] = { ...data.users[idx], ...updates };
-  writeUsersJson(data);
-  return data.users[idx];
+  const ok = db.updateUser(id, {
+    username: updates.username,
+    password_hash: updates.passwordHash,
+    role_id: updates.role,
+  });
+  if (!ok) return undefined;
+  return findUserById(id);
 }
 
 export function deleteUser(id: string): boolean {
-  const data = readUsersJson();
-  const idx = data.users.findIndex((u) => u.id === id);
-  if (idx === -1) return false;
-  data.users.splice(idx, 1);
-  writeUsersJson(data);
-  return true;
+  return db.deleteUser(id);
 }
 
-// ── Backward compatibility: auto-migrate from PI_WEB_ADMIN_PASSWORD ────────────
+// ── Role Management ────────────────────────────────────────────────────────────
 
-export async function maybeMigrateFromEnv(): Promise<void> {
-  if (hasUsers()) return;
-  const envPwd = process.env.PI_WEB_ADMIN_PASSWORD;
-  if (!envPwd || envPwd.trim().length === 0) return;
-  // Create admin user from env password using legacy SHA-256 format
-  const legacyHash = `sha256:${createHash("sha256").update(envPwd.trim()).digest("hex")}`;
-  createUser("admin", legacyHash, "admin");
-  console.log("[user-auth] Migrated PI_WEB_ADMIN_PASSWORD → admin user");
+export function getAllRoles(): Role[] { return db.getAllRoles(); }
+
+export function saveRole(id: string, label: string, permissions: string[], isDefault: boolean): void {
+  db.saveRole(id, label, permissions, isDefault);
 }
 
-// ── Session Store (globalThis survives Next.js HMR) ────────────────────────────
+export function deleteRole(id: string): boolean { return db.deleteRole(id); }
 
-interface SessionEntry {
-  userId: string;
-  expires: number;
+export function getDefaultRoleId(): string { return db.getDefaultRoleId(); }
+
+// ── Permissions ────────────────────────────────────────────────────────────────
+
+export function hasPermission(userId: string, permission: string): boolean {
+  return db.hasPermission(userId, permission);
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __piUserSessions: Map<string, SessionEntry> | undefined;
+export function canManageGlobalSkills(userId: string): boolean {
+  return db.hasPermission(userId, "skills:global");
 }
 
-function getSessionStore(): Map<string, SessionEntry> {
-  if (!globalThis.__piUserSessions) {
-    globalThis.__piUserSessions = new Map();
-  }
-  return globalThis.__piUserSessions;
+export function canManageModels(userId: string): boolean {
+  return db.hasPermission(userId, "models:write");
 }
 
-export function createSession(userId: string): string {
-  const token = randomUUID();
-  const store = getSessionStore();
-  store.set(token, { userId, expires: Date.now() + SESSION_TTL_MS });
-  // Lazy cleanup
-  const now = Date.now();
-  for (const [k, v] of store) {
-    if (v.expires < now) store.delete(k);
-  }
-  return token;
+export function canManageUsers(userId: string): boolean {
+  return db.hasPermission(userId, "users:manage");
 }
 
-export function validateSession(token: string): { userId: string } | null {
-  const store = getSessionStore();
-  const entry = store.get(token);
-  if (!entry || entry.expires < Date.now()) {
-    store.delete(token);
-    return null;
-  }
-  return { userId: entry.userId };
+export function getMaxToolPreset(userId: string): "full" | "default" {
+  return db.hasPermission(userId, "agent:full_tools") ? "full" : "default";
 }
 
-export function destroySession(token: string): void {
-  getSessionStore().delete(token);
-}
+// ── Session Management ─────────────────────────────────────────────────────────
+
+export function createSession(userId: string): string { return db.createSession(userId); }
+export function validateSession(token: string): { userId: string } | null { return db.validateSession(token); }
+export function destroySession(token: string): void { db.destroySession(token); }
 
 // ── Cookie Helpers ─────────────────────────────────────────────────────────────
+
+const COOKIE_NAME = "pi-web-session";
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 function parseCookies(header: string): Record<string, string> {
   const map: Record<string, string> = {};
@@ -227,27 +169,8 @@ export function makeClearCookie(): string {
   return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0`;
 }
 
-// ── Permission Helpers ─────────────────────────────────────────────────────────
-
-export function getMaxToolPreset(user: User): "full" | "default" {
-  return user.role === "admin" ? "full" : "default";
-}
-
-export function canManageGlobalSkills(user: User): boolean {
-  return user.role === "admin";
-}
-
-export function canManageModels(user: User): boolean {
-  return user.role === "admin";
-}
-
-export function canManageUsers(user: User): boolean {
-  return user.role === "admin";
-}
-
 // ── Route Helpers ──────────────────────────────────────────────────────────────
 
-/** Get the current user from request cookies, or null if not authenticated. */
 export function getCurrentUser(req: Request): User | null {
   const token = getSessionToken(req.headers.get("cookie"));
   if (!token) return null;
@@ -256,40 +179,41 @@ export function getCurrentUser(req: Request): User | null {
   return findUserById(session.userId) ?? null;
 }
 
-/**
- * Check that the request has a valid session with the required role.
- * Returns either ok or a 401/403 Response.
- */
 export function requireRole(
   req: Request,
-  role: Role,
+  permissionOrRole: string,
 ): { ok: true; user: User } | { ok: false; response: Response } {
   const token = getSessionToken(req.headers.get("cookie"));
   if (!token) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Authentication required" }, { status: 401 }),
-    };
+    return { ok: false, response: Response.json({ error: "Authentication required" }, { status: 401 }) };
   }
   const session = validateSession(token);
   if (!session) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Session expired or invalid" }, { status: 401 }),
-    };
+    return { ok: false, response: Response.json({ error: "Session expired" }, { status: 401 }) };
   }
   const user = findUserById(session.userId);
   if (!user) {
-    return {
-      ok: false,
-      response: Response.json({ error: "User not found" }, { status: 401 }),
-    };
+    return { ok: false, response: Response.json({ error: "User not found" }, { status: 401 }) };
   }
-  if (role === "admin" && user.role !== "admin") {
-    return {
-      ok: false,
-      response: Response.json({ error: "Admin access required" }, { status: 403 }),
-    };
+
+  // Support both legacy role checks ("admin") and new permission checks ("models:write")
+  if (permissionOrRole === "admin" || permissionOrRole === "user") {
+    // Legacy: check role
+    if (permissionOrRole === "user") return { ok: true, user };
+    if (user.role !== "admin") {
+      return { ok: false, response: Response.json({ error: "Admin access required" }, { status: 403 }) };
+    }
+  } else {
+    // New: check permission
+    if (!hasPermission(user.id, permissionOrRole)) {
+      return { ok: false, response: Response.json({ error: "Insufficient permissions" }, { status: 403 }) };
+    }
   }
   return { ok: true, user };
+}
+
+// ── Migration ─────────────────────────────────────────────────────────────────
+
+export async function maybeMigrateFromEnv(): Promise<void> {
+  await db.migrateFromJson();
 }

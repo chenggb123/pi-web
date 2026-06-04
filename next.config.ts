@@ -1,12 +1,26 @@
 import type { NextConfig } from "next";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const { version } = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")) as { version: string };
 let piVersion = "unknown";
 try {
-  const piPkgPath = join(__dirname, "node_modules/@earendil-works/pi-coding-agent/package.json");
-  piVersion = (JSON.parse(readFileSync(piPkgPath, "utf8")) as { version: string }).version;
+  // Walk up from __dirname to find the hoisted node_modules
+  let dir = __dirname;
+  for (let i = 0; i < 5; i++) {
+    const testPath = join(dir, "node_modules/@earendil-works/pi-coding-agent/package.json");
+    if (existsSync(testPath)) {
+      piVersion = (JSON.parse(readFileSync(testPath, "utf8")) as { version: string }).version;
+      break;
+    }
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
 } catch { /* package not found, use default */ }
 
 const nextConfig: NextConfig = {

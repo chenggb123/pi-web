@@ -11,7 +11,15 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [appName, setAppName] = useState("Pi Agent Web");
   const usernameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((d: { appName?: string }) => { if (d.appName) setAppName(d.appName); })
+      .catch(() => {});
+  }, []);
 
   // Check current status on mount
   useEffect(() => {
@@ -103,7 +111,7 @@ export default function LoginPage() {
               marginBottom: 6,
             }}
           >
-            Pi Agent Web
+            {appName}
           </div>
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {mode === "setup"

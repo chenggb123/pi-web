@@ -208,6 +208,21 @@ function PiAgentTitle() {
   );
 }
 
+function SidebarTitle() {
+  const [appName, setAppName] = useState("Pi Agent Web");
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((d: { appName?: string }) => { if (d.appName) setAppName(d.appName); })
+      .catch(() => {});
+  }, []);
+  return (
+    <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: "var(--text)", fontFamily: "var(--font-mono)" }}>
+      {appName}
+    </div>
+  );
+}
+
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onAtMention, workspaceLocked }: Props) {
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -368,7 +383,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: "var(--text)", fontFamily: "var(--font-mono)" }}>Pi Agent Web</div>
+          <SidebarTitle />
           <div style={{ display: "flex", gap: 6 }}>
             <button
               onClick={handleNewSession}

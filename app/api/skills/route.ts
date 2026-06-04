@@ -30,24 +30,23 @@ export async function PATCH(req: Request) {
   const auth = requireRole(req, "user");
   if (!auth.ok) return auth.response;
 
-  // Non-admin users cannot modify global skills (outside home dir or agent dir)
-  if (auth.user.role !== "admin") {
-    const body = await req.clone().json() as { filePath?: string };
-    const home = homedir();
-    const agentDir = getAgentDir();
-    if (body.filePath) {
-      const isGlobal = body.filePath.startsWith(home) || body.filePath.startsWith(agentDir);
-      if (isGlobal) {
-        return NextResponse.json(
-          { error: "不能修改全局 skill，只能修改项目级 skill" },
-          { status: 403 },
-        );
-      }
-    }
-  }
-
   try {
     const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
+
+    // Non-admin users cannot modify global skills
+    if (!canManageGlobalSkills(auth.user.id)) {
+      const home = homedir();
+      const agentDir = getAgentDir();
+      if (body.filePath) {
+        const isGlobal = body.filePath.startsWith(home) || body.filePath.startsWith(agentDir);
+        if (isGlobal) {
+          return NextResponse.json(
+            { error: "不能修改全局 skill，只能修改项目级 skill" },
+            { status: 403 },
+          );
+        }
+      }
+    }
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
     if (!existsSync(filePath)) return NextResponse.json({ error: "file not found" }, { status: 404 });

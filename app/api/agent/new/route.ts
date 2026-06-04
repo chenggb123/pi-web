@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const user = getCurrentUser(req);
     let effectiveToolNames = toolNames;
     if (user) {
-      const maxPreset = getMaxToolPreset(user);
+      const maxPreset = getMaxToolPreset(user.id);
       if (maxPreset === "default") {
         // Non-admin: restrict to DEFAULT preset tools only
         effectiveToolNames = PRESET_DEFAULT;

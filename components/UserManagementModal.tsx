@@ -5,8 +5,15 @@ import { useState, useEffect, useCallback, useRef } from "react";
 interface UserInfo {
   id: string;
   username: string;
-  role: "admin" | "user";
+  role: string;
   createdAt: string;
+}
+
+interface RoleInfo {
+  id: string;
+  label: string;
+  permissions: string[];
+  is_default: boolean;
 }
 
 type Mode = "list" | "add" | "edit";
@@ -25,7 +32,8 @@ export function UserManagementModal({
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [formUsername, setFormUsername] = useState("");
   const [formPassword, setFormPassword] = useState("");
-  const [formRole, setFormRole] = useState<"admin" | "user">("user");
+  const [roles, setRoles] = useState<RoleInfo[]>([]);
+  const [formRole, setFormRole] = useState("user");
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -44,7 +52,21 @@ export function UserManagementModal({
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => { loadUsers(); loadRoles(); }, [loadUsers]);
+
+  const loadRoles = useCallback(() => {
+    fetch("/api/admin/roles")
+      .then((r) => r.json())
+      .then((d: { roles?: RoleInfo[] }) => {
+        setRoles(d.roles ?? []);
+        // Set default role if adding a new user
+        if (mode === "add") {
+          const def = (d.roles ?? []).find((r) => r.is_default);
+          if (def) setFormRole(def.id);
+        }
+      })
+      .catch(() => {});
+  }, [mode]);
 
   useEffect(() => {
     if (mode === "add" || mode === "edit") usernameRef.current?.focus();
@@ -232,11 +254,10 @@ export function UserManagementModal({
                     </span>
                     <span style={{
                       fontSize: 9, padding: "1px 6px", borderRadius: 3,
-                      background: user.role === "admin" ? "rgba(37,99,235,0.12)" : "rgba(120,120,120,0.12)",
-                      color: user.role === "admin" ? "rgba(37,99,235,0.8)" : "var(--text-dim)",
+                      background: "rgba(37,99,235,0.12)", color: "rgba(37,99,235,0.8)",
                       fontWeight: 600, textTransform: "uppercase", flexShrink: 0,
                     }}>
-                      {user.role}
+                      {roles.find((r) => r.id === user.role)?.label ?? user.role}
                     </span>
                   </div>
                 ))
@@ -304,11 +325,12 @@ export function UserManagementModal({
                   <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Role</label>
                   <select
                     value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as "admin" | "user")}
+                    onChange={(e) => setFormRole(e.target.value)}
                     style={inputStyle}
                   >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.label}</option>
+                    ))}
                   </select>
                 </div>
 
