@@ -9,6 +9,11 @@ export interface User {
   passwordHash: string;
   role: string;
   createdAt: string;
+  displayName: string;
+  department: string;
+  position: string;
+  phone: string;
+  avatar: string; // base64 data URL
 }
 
 export interface Role {
@@ -61,37 +66,45 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 export function hasUsers(): boolean { return db.hasUsers(); }
 
-export function getUsers(): User[] {
-  return db.getAllUsers().map((u) => ({
+function toUser(u: db.UserRow): User {
+  return {
     id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at,
-  }));
+    displayName: u.display_name, department: u.department, position: u.position, phone: u.phone, avatar: u.avatar,
+  };
 }
+
+export function getUsers(): User[] { return db.getAllUsers().map(toUser); }
 
 export function findUser(username: string): User | undefined {
   const u = db.findUserByUsername(username);
-  if (!u) return undefined;
-  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
+  return u ? toUser(u) : undefined;
 }
 
 export function findUserById(id: string): User | undefined {
   const u = db.findUserById(id);
-  if (!u) return undefined;
-  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
+  return u ? toUser(u) : undefined;
 }
 
-export function createUser(username: string, passwordHash: string, role: string): User {
-  const u = db.createUser(username, passwordHash, role);
-  return { id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at };
+export function createUser(
+  username: string, passwordHash: string, role: string,
+  opts?: { displayName?: string; department?: string; position?: string; phone?: string; avatar?: string },
+): User {
+  const u = db.createUser(username, passwordHash, role, {
+    display_name: opts?.displayName, department: opts?.department,
+    position: opts?.position, phone: opts?.phone, avatar: opts?.avatar,
+  });
+  return toUser(u);
 }
 
 export function updateUser(
   id: string,
-  updates: { username?: string; passwordHash?: string; role?: string },
+  updates: { username?: string; passwordHash?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string },
 ): User | undefined {
   const ok = db.updateUser(id, {
-    username: updates.username,
-    password_hash: updates.passwordHash,
-    role_id: updates.role,
+    username: updates.username, password_hash: updates.passwordHash,
+    role_id: updates.role, display_name: updates.displayName,
+    department: updates.department, position: updates.position,
+    phone: updates.phone, avatar: updates.avatar,
   });
   if (!ok) return undefined;
   return findUserById(id);

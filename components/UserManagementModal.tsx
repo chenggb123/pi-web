@@ -7,6 +7,11 @@ interface UserInfo {
   username: string;
   role: string;
   createdAt: string;
+  displayName?: string;
+  department?: string;
+  position?: string;
+  phone?: string;
+  avatar?: string;
 }
 
 interface RoleInfo {
@@ -34,8 +39,14 @@ export function UserManagementModal({
   const [formPassword, setFormPassword] = useState("");
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [formRole, setFormRole] = useState("user");
+  const [formDisplayName, setFormDisplayName] = useState("");
+  const [formDepartment, setFormDepartment] = useState("");
+  const [formPosition, setFormPosition] = useState("");
+  const [formPhone, setFormPhone] = useState("");
+  const [formAvatar, setFormAvatar] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
 
@@ -78,6 +89,11 @@ export function UserManagementModal({
     setFormUsername("");
     setFormPassword("");
     setFormRole("user");
+    setFormDisplayName("");
+    setFormDepartment("");
+    setFormPosition("");
+    setFormPhone("");
+    setFormAvatar("");
     setFormError(null);
   }, []);
 
@@ -87,6 +103,11 @@ export function UserManagementModal({
     setFormUsername(user.username);
     setFormPassword("");
     setFormRole(user.role);
+    setFormDisplayName(user.displayName ?? "");
+    setFormDepartment(user.department ?? "");
+    setFormPosition(user.position ?? "");
+    setFormPhone(user.phone ?? "");
+    setFormAvatar(user.avatar ?? "");
     setFormError(null);
   }, []);
 
@@ -116,6 +137,11 @@ export function UserManagementModal({
             username: formUsername.trim(),
             password: formPassword,
             role: formRole,
+            displayName: formDisplayName.trim(),
+            department: formDepartment.trim(),
+            position: formPosition.trim(),
+            phone: formPhone.trim(),
+            avatar: formAvatar,
           }),
         });
         const d = (await res.json()) as { success?: boolean; error?: string };
@@ -124,32 +150,40 @@ export function UserManagementModal({
           return;
         }
       } else if (mode === "edit" && selectedUser) {
-        const body: Record<string, string> = {};
-        if (formUsername.trim() !== selectedUser.username) body.username = formUsername.trim();
+        // Always send all editable fields (account is locked)
+        const body: Record<string, string> = {
+          role: formRole,
+          displayName: formDisplayName.trim(),
+          department: formDepartment.trim(),
+          position: formPosition.trim(),
+          phone: formPhone.trim(),
+          avatar: formAvatar,
+        };
         if (formPassword.trim()) body.password = formPassword;
-        if (formRole !== selectedUser.role) body.role = formRole;
-        if (Object.keys(body).length > 0) {
-          const res = await fetch("/api/admin/users", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: selectedUser.id, ...body }),
-          });
-          const d = (await res.json()) as { success?: boolean; error?: string };
-          if (!res.ok || d.error) {
-            setFormError(d.error ?? `HTTP ${res.status}`);
-            return;
-          }
+        const res = await fetch("/api/admin/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: selectedUser.id, ...body }),
+        });
+        const d = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || d.error) {
+          setFormError(d.error ?? `HTTP ${res.status}`);
+          setSaving(false);
+          return;
         }
       }
       loadUsers();
       setMode("list");
       setSelectedUser(null);
+      setFormError(null);
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2000);
     } catch (e) {
       setFormError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [mode, selectedUser, formUsername, formPassword, formRole, loadUsers]);
+  }, [mode, selectedUser, formUsername, formPassword, formRole, formDisplayName, formDepartment, formPosition, formPhone, formAvatar, loadUsers]);
 
   const handleDelete = useCallback(async (userId: string) => {
     try {
@@ -295,14 +329,18 @@ export function UserManagementModal({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Username</label>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                    Account (login) {mode === "edit" && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>— locked</span>}
+                  </label>
                   <input
                     ref={usernameRef}
                     value={formUsername}
                     onChange={(e) => setFormUsername(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-                    placeholder="Username"
-                    style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+                    placeholder="Login account name"
+                    disabled={mode === "edit"}
+                    title={mode === "edit" ? "Account name cannot be changed after creation" : ""}
+                    style={{ ...inputStyle, fontFamily: "var(--font-mono)", opacity: mode === "edit" ? 0.5 : 1, cursor: mode === "edit" ? "not-allowed" : "text" }}
                   />
                 </div>
 
@@ -334,17 +372,62 @@ export function UserManagementModal({
                   </select>
                 </div>
 
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Name</label>
+                  <input value={formDisplayName} onChange={(e) => setFormDisplayName(e.target.value)} placeholder="Display name" style={inputStyle} />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Position</label>
+                  <input value={formPosition} onChange={(e) => setFormPosition(e.target.value)} placeholder="e.g. Software Engineer" style={inputStyle} />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Avatar</label>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {formAvatar ? (
+                      <img src={formAvatar} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--border)" }} />
+                    ) : (
+                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg-hover)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 10 }}>none</div>
+                    )}
+                    <label style={{ padding: "5px 10px", background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)" }}>
+                      Choose image
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const reader = new FileReader();
+                        reader.onload = () => setFormAvatar(reader.result as string);
+                        reader.readAsDataURL(f);
+                      }} />
+                    </label>
+                    {formAvatar && (
+                      <button onClick={() => setFormAvatar("")} style={{ padding: "5px 10px", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 5, cursor: "pointer", fontSize: 11, color: "#ef4444" }}>Remove</button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Department</label>
+                    <input value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)} placeholder="e.g. Engineering" style={inputStyle} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Phone</label>
+                    <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="e.g. +86 138..." style={inputStyle} />
+                  </div>
+                </div>
+
                 {formError && (
                   <div style={{ fontSize: 12, color: "#f87171" }}>{formError}</div>
                 )}
 
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                  <button onClick={handleSave} disabled={saving} style={{
-                    padding: "7px 16px", background: "var(--accent)", border: "none",
-                    borderRadius: 5, color: "#fff", cursor: saving ? "not-allowed" : "pointer",
-                    fontSize: 12, fontWeight: 600,
+                  <button onClick={handleSave} disabled={saving || savedOk} style={{
+                    padding: "7px 16px", background: savedOk ? "#16a34a" : "var(--accent)", border: "none",
+                    borderRadius: 5, color: "#fff", cursor: (saving || savedOk) ? "not-allowed" : "pointer",
+                    fontSize: 12, fontWeight: 600, transition: "background 0.3s",
                   }}>
-                    {saving ? "Saving…" : mode === "add" ? "Create" : "Save Changes"}
+                    {saving ? "Saving…" : savedOk ? "✓ Saved" : mode === "add" ? "Create" : "Save Changes"}
                   </button>
                   <button onClick={handleCancel} style={{
                     padding: "7px 14px", background: "none",

@@ -1,14 +1,18 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { join, dirname } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 // ── JSON-based storage (lightweight, no native deps) ───────────────────────────
 
-function readJson<T>(filename: string, fallback: T): T {
+function readJson<T>(filename: string, fallback: T, validate?: (v: unknown) => v is T): T {
   const d = getAgentDir();
   const p = join(d, filename);
   if (!existsSync(p)) return fallback;
-  try { return JSON.parse(readFileSync(p, "utf8")) as T; } catch { return fallback; }
+  try {
+    const v = JSON.parse(readFileSync(p, "utf8")) as unknown;
+    if (validate && !validate(v)) return fallback;
+    return v as T;
+  } catch { return fallback; }
 }
 
 function writeJson<T>(filename: string, data: T): void {
@@ -24,6 +28,7 @@ export interface Role {
 }
 export interface UserRow {
   id: string; username: string; password_hash: string; role_id: string; created_at: string;
+  display_name: string; department: string; position: string; phone: string; avatar: string;
 }
 interface SessionEntry { token: string; user_id: string; expires: number; }
 
@@ -48,20 +53,44 @@ function ensureInit(): void {
     writeJson("roles.json", roles);
   }
 
-  // Migrate old users.json if needed
-  const usersPath = join(getAgentDir(), "users.json");
-  if (existsSync(usersPath)) {
+  // Migrate old users.json if needed — when users_db.json is missing or corrupt
+  const dbPath = join(getAgentDir(), "users_db.json");
+  const oldPath = join(getAgentDir(), "users.json");
+  const dbExists = existsSync(dbPath);
+
+  // Check if users_db.json is corrupt (exists but has no valid users array)
+  let dbIsCorrupt = false;
+  if (dbExists) {
     try {
-      const old = JSON.parse(readFileSync(usersPath, "utf8")) as { users: Array<{ id: string; username: string; passwordHash: string; role: string; createdAt: string }> };
+      const raw = JSON.parse(readFileSync(dbPath, "utf8")) as unknown;
+      if (!raw || typeof raw !== "object" || !Array.isArray((raw as UsersData).users)) {
+        dbIsCorrupt = true;
+      }
+    } catch { dbIsCorrupt = true; }
+  }
+
+  // Recover from old users.json if users_db.json is missing or corrupt
+  if ((!dbExists || dbIsCorrupt) && existsSync(oldPath)) {
+    try {
+      const old = JSON.parse(readFileSync(oldPath, "utf8")) as { users: Array<{ id: string; username: string; passwordHash: string; role: string; createdAt: string }> };
       if (old.users?.length) {
         const newUsers: UserRow[] = old.users.map((u) => ({
           id: u.id, username: u.username, password_hash: u.passwordHash,
           role_id: u.role === "admin" ? "admin" : "user", created_at: u.createdAt,
+          display_name: "", department: "", position: "", phone: "", avatar: "",
         }));
         writeJson("users_db.json", { users: newUsers });
-        // Don't delete old file, just stop using it
+        // Rename old file so migration doesn't run again
+        writeFileSync(oldPath + ".migrated", readFileSync(oldPath));
+        try { unlinkSync(oldPath); } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
+  }
+
+  // If users_db.json is still missing/corrupt after recovery attempts,
+  // create a fresh one so the app doesn't crash
+  if (!existsSync(dbPath)) {
+    writeJson("users_db.json", { users: [] });
   }
 }
 
@@ -121,36 +150,61 @@ function getDefaultRoleId(): string {
 
 // ── User operations ────────────────────────────────────────────────────────────
 
+function normalizeUser(u: Partial<UserRow> & { id: string; username: string }): UserRow {
+  return {
+    id: u.id, username: u.username, password_hash: u.password_hash ?? "",
+    role_id: u.role_id ?? "user", created_at: u.created_at ?? new Date().toISOString(),
+    display_name: u.display_name ?? "", department: u.department ?? "",
+    position: u.position ?? "", phone: u.phone ?? "", avatar: u.avatar ?? "",
+  };
+}
+
 function getAllUsers(): UserRow[] {
   ensureInit();
-  return readJson<UsersData>("users_db.json", { users: [] }).users;
+  const data = readJson<UsersData>("users_db.json", { users: [] });
+  const users = Array.isArray(data.users) ? data.users : [];
+  return users.map(normalizeUser);
 }
 
 function findUserByUsername(username: string): UserRow | undefined {
-  return getAllUsers().find((u) => u.username === username);
+  const u = getAllUsers().find((u) => u.username === username);
+  return u ? normalizeUser(u) : undefined;
 }
 
 function findUserById(id: string): UserRow | undefined {
-  return getAllUsers().find((u) => u.id === id);
+  const u = getAllUsers().find((u) => u.id === id);
+  return u ? normalizeUser(u) : undefined;
 }
 
-function createUser(username: string, password_hash: string, role_id: string): UserRow {
+function createUser(
+  username: string, password_hash: string, role_id: string,
+  opts?: { display_name?: string; department?: string; position?: string; phone?: string; avatar?: string },
+): UserRow {
   ensureInit();
   const data = readJson<UsersData>("users_db.json", { users: [] });
-  const user: UserRow = { id: crypto.randomUUID(), username, password_hash, role_id, created_at: new Date().toISOString() };
+  const user: UserRow = {
+    id: crypto.randomUUID(), username, password_hash, role_id, created_at: new Date().toISOString(),
+    display_name: opts?.display_name ?? "", department: opts?.department ?? "",
+    position: opts?.position ?? "", phone: opts?.phone ?? "", avatar: opts?.avatar ?? "",
+  };
   data.users.push(user);
   writeJson("users_db.json", data);
   return user;
 }
 
-function updateUser(id: string, updates: { username?: string; password_hash?: string; role_id?: string }): boolean {
+function updateUser(id: string, updates: { username?: string; password_hash?: string; role_id?: string; display_name?: string; department?: string; position?: string; phone?: string; avatar?: string }): boolean {
   ensureInit();
   const data = readJson<UsersData>("users_db.json", { users: [] });
   const user = data.users.find((u) => u.id === id);
   if (!user) return false;
-  if (updates.username) user.username = updates.username;
-  if (updates.password_hash) user.password_hash = updates.password_hash;
-  if (updates.role_id) user.role_id = updates.role_id;
+  if (updates.username !== undefined) user.username = updates.username;
+  if (updates.password_hash !== undefined) user.password_hash = updates.password_hash;
+  if (updates.role_id !== undefined) user.role_id = updates.role_id;
+  if (updates.display_name !== undefined) user.display_name = updates.display_name;
+  if (updates.department !== undefined) user.department = updates.department;
+  if (updates.position !== undefined) user.position = updates.position;
+  if (updates.phone !== undefined) user.phone = updates.phone;
+  if (updates.avatar !== undefined) user.avatar = updates.avatar;
   writeJson("users_db.json", data);
   return true;
 }
@@ -206,7 +260,7 @@ async function migrateFromJson(): Promise<void> {
   if (envPwd?.trim()) {
     const { createHash } = await import("crypto");
     const hash = `sha256:${createHash("sha256").update(envPwd.trim()).digest("hex")}`;
-    createUser("admin", hash, "admin");
+    createUser("admin", hash, "admin", { display_name: "Admin" });
   }
 }
 

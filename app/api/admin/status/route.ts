@@ -1,12 +1,12 @@
-import { hasUsers, getCurrentUser } from "@/lib/user-auth";
+import { hasUsers, getCurrentUser, User } from "@/lib/user-auth";
 import { homedir } from "os";
 import { join } from "path";
 import { mkdirSync } from "fs";
 
 export const dynamic = "force-dynamic";
 
-function getUserWorkspace(username: string): string {
-  const dir = join(homedir(), "pi-cwd", username.toLowerCase());
+function getUserWorkspace(user: User): string {
+  const dir = join(homedir(), "pi-cwd", user.username.toLowerCase());
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -33,7 +33,12 @@ export async function GET(req: Request) {
       username: user.username,
       role: user.role,
       permissions,
+      displayName: user.displayName,
+      department: user.department,
+      position: user.position,
+      phone: user.phone,
+      avatar: user.avatar,
     },
-    workspace: getUserWorkspace(user.username),
+    workspace: getUserWorkspace(user),
   });
 }

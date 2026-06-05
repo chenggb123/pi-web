@@ -16,9 +16,9 @@ export async function POST(req: Request) {
   const auth = requireRole(req, "admin");
   if (!auth.ok) return auth.response;
 
-  let body: { username?: string; password?: string; role?: string };
+  let body: { username?: string; password?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string };
   try {
-    body = (await req.json()) as { username?: string; password?: string; role?: string };
+    body = (await req.json()) as { username?: string; password?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string };
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -39,7 +39,13 @@ export async function POST(req: Request) {
 
   try {
     const passwordHash = await hashPassword(password);
-    const user = createUser(username, passwordHash, role);
+    const user = createUser(username, passwordHash, role, {
+      displayName: body.displayName?.trim(),
+      department: body.department?.trim(),
+      position: body.position?.trim(),
+      phone: body.phone?.trim(),
+      avatar: body.avatar?.trim(),
+    });
     const { passwordHash: _, ...safe } = user;
     return Response.json({ success: true, user: safe }, { status: 201 });
   } catch (e) {
@@ -52,9 +58,9 @@ export async function PUT(req: Request) {
   const auth = requireRole(req, "admin");
   if (!auth.ok) return auth.response;
 
-  let body: { id?: string; username?: string; password?: string; role?: string };
+  let body: { id?: string; username?: string; password?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string };
   try {
-    body = (await req.json()) as { id?: string; username?: string; password?: string; role?: string };
+    body = (await req.json()) as { id?: string; username?: string; password?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string };
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -68,12 +74,17 @@ export async function PUT(req: Request) {
     return Response.json({ error: "Cannot change your own role" }, { status: 400 });
   }
 
-  const updates: { username?: string; passwordHash?: string; role?: "admin" | "user" } = {};
-  if (body.username?.trim()) updates.username = body.username.trim();
+  const updates: { passwordHash?: string; role?: string; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string } = {};
+  // Account name is locked after creation — changing it would break workspace path
   if (body.password?.trim()) {
     updates.passwordHash = await hashPassword(body.password.trim());
   }
-  if (body.role === "admin" || body.role === "user") updates.role = body.role;
+  if (body.role) updates.role = body.role;
+  if (body.displayName !== undefined) updates.displayName = body.displayName.trim();
+  if (body.department !== undefined) updates.department = body.department.trim();
+  if (body.position !== undefined) updates.position = body.position.trim();
+  if (body.phone !== undefined) updates.phone = body.phone.trim();
+  if (body.avatar !== undefined) updates.avatar = body.avatar.trim();
 
   const updated = updateUser(body.id, updates);
   if (!updated) {

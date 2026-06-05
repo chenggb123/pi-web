@@ -15,6 +15,15 @@ import { useTheme } from "@/hooks/useTheme";
 import type { SessionInfo } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
+      <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{label}</span>
+      <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{value}</span>
+    </div>
+  );
+}
+
 function MenuItem({
   icon, label, onClick, disabled, danger,
 }: {
@@ -61,7 +70,7 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string; permissions: string[] } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string; permissions: string[]; displayName?: string; department?: string; position?: string; phone?: string; avatar?: string } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [userManagementOpen, setUserManagementOpen] = useState(false);
   const [roleManagementOpen, setRoleManagementOpen] = useState(false);
@@ -94,7 +103,7 @@ export function AppShell() {
   useEffect(() => {
     fetch("/api/admin/status")
       .then((r) => r.json())
-      .then((d: { authenticated: boolean; needsSetup?: boolean; user?: { id: string; username: string; role: string; permissions?: string[] }; workspace?: string }) => {
+      .then((d: { authenticated: boolean; needsSetup?: boolean; user?: { id: string; username: string; role: string; permissions?: string[]; displayName?: string; position?: string; avatar?: string }; workspace?: string }) => {
         if (!d.authenticated) {
           const setupParam = d.needsSetup ? "?setup=1" : "";
           router.replace(`/login${setupParam}`);
@@ -305,28 +314,34 @@ export function AppShell() {
           onMouseLeave={(e) => { if (!userMenuOpen) e.currentTarget.style.background = "none"; }}
         >
           {/* Avatar circle */}
-          <div style={{
-            width: 28, height: 28, borderRadius: "50%",
-            background: currentUser?.role === "admin"
-              ? "linear-gradient(135deg, #2563eb, #7c3aed)"
-              : "linear-gradient(135deg, #6b7280, #9ca3af)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0, color: "#fff", fontSize: 11, fontWeight: 700,
-            textTransform: "uppercase",
-          }}>
-            {currentUser?.username?.charAt(0) ?? "?"}
-          </div>
-          {/* Username */}
+          {currentUser?.avatar ? (
+            <img src={currentUser.avatar} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+          ) : (
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              background: currentUser?.role === "admin"
+                ? "linear-gradient(135deg, #2563eb, #7c3aed)"
+                : "linear-gradient(135deg, #6b7280, #9ca3af)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, color: "#fff", fontSize: 11, fontWeight: 700,
+              textTransform: "uppercase",
+            }}>
+              {(currentUser?.displayName || currentUser?.username)?.charAt(0) ?? "?"}
+            </div>
+          )}
+          {/* Name */}
           <div style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
             <div style={{
               fontSize: 12, fontWeight: 600, color: "var(--text)",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
-              {currentUser?.username}
+              {currentUser?.displayName || currentUser?.username}
             </div>
-            <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>
-              {currentUser?.role === "admin" ? "Administrator" : "User"}
-            </div>
+            {currentUser?.position && (
+              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>
+                {currentUser.position}
+              </div>
+            )}
           </div>
           {/* Chevron */}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -709,19 +724,29 @@ export function AppShell() {
             <button onClick={() => setPersonalInfoOpen(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>
           </div>
           <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: "50%",
-              background: currentUser.role === "admin" ? "linear-gradient(135deg, #2563eb, #7c3aed)" : "linear-gradient(135deg, #6b7280, #9ca3af)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontSize: 22, fontWeight: 700, textTransform: "uppercase",
-            }}>
-              {currentUser.username.charAt(0)}
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{currentUser.username}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, textTransform: "capitalize" }}>
-                {currentUser.role === "admin" ? "Administrator" : "User"}
+            {currentUser.avatar ? (
+              <img src={currentUser.avatar} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--border)" }} />
+            ) : (
+              <div style={{
+                width: 64, height: 64, borderRadius: "50%",
+                background: currentUser.role === "admin" ? "linear-gradient(135deg, #2563eb, #7c3aed)" : "linear-gradient(135deg, #6b7280, #9ca3af)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontSize: 24, fontWeight: 700, textTransform: "uppercase",
+              }}>
+                {(currentUser.displayName || currentUser.username).charAt(0)}
               </div>
+            )}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{currentUser.displayName || currentUser.username}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                @{currentUser.username}
+              </div>
+            </div>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+              <InfoRow label="Account" value={currentUser.username} />
+              {currentUser.position && <InfoRow label="Position" value={currentUser.position} />}
+              {currentUser.department && <InfoRow label="Department" value={currentUser.department} />}
+              {currentUser.phone && <InfoRow label="Phone" value={currentUser.phone} />}
             </div>
           </div>
           <div style={{ borderTop: "1px solid var(--border)", padding: "12px 18px", display: "flex", justifyContent: "flex-end" }}>

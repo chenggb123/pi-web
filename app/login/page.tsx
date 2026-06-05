@@ -130,14 +130,14 @@ export default function LoginPage() {
             <>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>
-                  Username
+                  Account
                 </label>
                 <input
                   ref={usernameRef}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
-                  placeholder="Username"
+                  placeholder="Account name"
                   autoComplete="username"
                   style={{
                     padding: "8px 10px",
