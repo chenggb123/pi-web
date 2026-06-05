@@ -539,14 +539,33 @@ function PdfViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
           {getRelativeFilePath(filePath, cwd)}
         </span>
         <span style={{ marginLeft: "auto" }}>PDF</span>
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          title="Open in new tab"
+          style={{
+            display: "flex", alignItems: "center", gap: 3,
+            color: "var(--text-dim)", textDecoration: "none", fontSize: 11,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+          Open
+        </a>
       </div>
-      <iframe
+      <embed
         src={src}
+        type="application/pdf"
         style={{
           flex: 1, width: "100%", border: "none",
-          background: isDark ? "#1a1a1a" : "#fff",
+          background: isDark ? "#525659" : "#fff",
         }}
-        title="PDF preview"
       />
     </div>
   );

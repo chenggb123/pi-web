@@ -49,6 +49,12 @@ export function UserManagementModal({
   const [savedOk, setSavedOk] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
+  const avatarReaderRef = useRef<FileReader | null>(null);
+
+  // Cleanup FileReader on unmount to prevent memory leak
+  useEffect(() => {
+    return () => { avatarReaderRef.current?.abort(); };
+  }, []);
 
   const loadUsers = useCallback(() => {
     setLoading(true);
@@ -328,6 +334,56 @@ export function UserManagementModal({
                   {mode === "add" ? "Add User" : `Edit: ${selectedUser?.username}`}
                 </div>
 
+                {/* Avatar — centered at top */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                  {formAvatar ? (
+                    <img src={formAvatar} alt="" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--border)", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }} />
+                  ) : (
+                    <div style={{
+                      width: 80, height: 80, borderRadius: "50%",
+                      background: formRole === "admin"
+                        ? "linear-gradient(135deg, #2563eb, #7c3aed)"
+                        : "linear-gradient(135deg, #6b7280, #9ca3af)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "#fff", fontSize: 30, fontWeight: 700,
+                      textTransform: "uppercase", boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                    }}>
+                      {(formDisplayName || formUsername).charAt(0) || "?"}
+                    </div>
+                  )}
+                  <label style={{
+                    padding: "4px 12px", background: "var(--bg-hover)", border: "1px solid var(--border)",
+                    borderRadius: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    {formAvatar ? "Change photo" : "Upload photo"}
+                    <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      avatarReaderRef.current?.abort();
+                      const reader = new FileReader();
+                      avatarReaderRef.current = reader;
+                      reader.onload = () => {
+                        setFormAvatar(reader.result as string);
+                        avatarReaderRef.current = null;
+                      };
+                      reader.readAsDataURL(f);
+                    }} />
+                  </label>
+                  {formAvatar && (
+                    <button onClick={() => setFormAvatar("")} style={{
+                      padding: "2px 0", background: "none", border: "none",
+                      cursor: "pointer", fontSize: 11, color: "#ef4444",
+                    }}>
+                      Remove photo
+                    </button>
+                  )}
+                </div>
+
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
                     Account (login) {mode === "edit" && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>— locked</span>}
@@ -380,30 +436,6 @@ export function UserManagementModal({
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Position</label>
                   <input value={formPosition} onChange={(e) => setFormPosition(e.target.value)} placeholder="e.g. Software Engineer" style={inputStyle} />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>Avatar</label>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    {formAvatar ? (
-                      <img src={formAvatar} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--border)" }} />
-                    ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg-hover)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 10 }}>none</div>
-                    )}
-                    <label style={{ padding: "5px 10px", background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)" }}>
-                      Choose image
-                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        const reader = new FileReader();
-                        reader.onload = () => setFormAvatar(reader.result as string);
-                        reader.readAsDataURL(f);
-                      }} />
-                    </label>
-                    {formAvatar && (
-                      <button onClick={() => setFormAvatar("")} style={{ padding: "5px 10px", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 5, cursor: "pointer", fontSize: 11, color: "#ef4444" }}>Remove</button>
-                    )}
-                  </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

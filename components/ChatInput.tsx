@@ -45,6 +45,7 @@ interface Props {
   soundEnabled?: boolean;
   onSoundToggle?: () => void;
   maxToolPreset?: "full" | "default";
+  cwd?: string | null;
 }
 
 export interface ChatInputHandle {
@@ -75,6 +76,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   retryInfo,
   soundEnabled, onSoundToggle,
   maxToolPreset,
+  cwd,
 }: Props, ref) {
   const [value, setValue] = useState("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -83,6 +85,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+
+  // Slash-command skill selector
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashSkills, setSlashSkills] = useState<{ name: string; description: string }[]>([]);
+  const [slashIdx, setSlashIdx] = useState(0);
+  const [slashLoading, setSlashLoading] = useState(false);
+  const [slashRect, setSlashRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const slashFetchedRef = useRef(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -238,19 +249,66 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }, [value, attachedImages, attachedFiles, hasAttachments, onSteer, onFollowUp, clearImages, clearFiles]);
 
+  // Filter skills by slash query
+  const filteredSlashSkills = slashQuery
+    ? slashSkills.filter((s) => s.name.toLowerCase().includes(slashQuery.toLowerCase()))
+    : slashSkills;
+
+  const insertSlashSkill = useCallback((skillName: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursorPos = ta.selectionStart ?? ta.value.length;
+    const textBefore = ta.value.slice(0, cursorPos);
+    const textAfter = ta.value.slice(cursorPos);
+    // Replace /query with /skillName (keeping the leading space or start-of-string before /)
+    const replaced = textBefore.replace(/(\s|^)\/[^\s/]*$/, `$1/${skillName}`);
+    const newVal = replaced + textAfter;
+    setValue(newVal);
+    setSlashOpen(false);
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      const newPos = replaced.length;
+      ta.setSelectionRange(newPos, newPos);
+      ta.focus();
+    });
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Slash menu keyboard navigation
+      if (slashOpen && filteredSlashSkills.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashIdx((i) => (i + 1) % filteredSlashSkills.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashIdx((i) => (i - 1 + filteredSlashSkills.length) % filteredSlashSkills.length);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          insertSlashSkill(filteredSlashSkills[slashIdx].name);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashOpen(false);
+          return;
+        }
+      }
+
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
-          // Default Enter sends as steer if available, else followup
           sendQueued(onSteer ? "steer" : "followup");
         } else {
           handleSend();
         }
       }
     },
-    [isStreaming, onSteer, onFollowUp, sendQueued, handleSend]
+    [slashOpen, filteredSlashSkills, slashIdx, insertSlashSkill, isStreaming, onSteer, onFollowUp, sendQueued, handleSend]
   );
 
   const handleInput = useCallback(() => {
@@ -258,7 +316,40 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, []);
+
+    // Slash-command detection
+    const val = ta.value;
+    const cursorPos = ta.selectionStart ?? val.length;
+    // Find the last '/' before cursor that is at word-start (preceded by start-of-string or space)
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const slashMatch = textBeforeCursor.match(/(?:^|\s)\/([^\s/]*)$/);
+    if (slashMatch) {
+      const query = slashMatch[1];
+      setSlashQuery(query);
+      setSlashOpen(true);
+      setSlashIdx(0);
+      // Capture input rect for fixed dropdown positioning
+      const rect = ta.getBoundingClientRect();
+      setSlashRect({ top: rect.top, left: rect.left, width: rect.width });
+      // Fetch skills lazily on first /
+      if (!slashFetchedRef.current) {
+        slashFetchedRef.current = true;
+        setSlashLoading(true);
+        // Use the current cwd from the URL search params or from the page
+        const skillsCwd = cwd || ".";
+        fetch(`/api/skills?cwd=${encodeURIComponent(skillsCwd)}`)
+          .then((r) => r.json())
+          .then((d: { skills?: { name: string; description: string }[] }) => {
+            setSlashSkills((d.skills ?? []).map((s) => ({ name: s.name, description: s.description })));
+          })
+          .catch(() => {})
+          .finally(() => setSlashLoading(false));
+      }
+    } else {
+      setSlashOpen(false);
+      setSlashQuery("");
+    }
+  }, [cwd]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -423,9 +514,62 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
 
+        {/* Slash-command skill selector dropdown (fixed positioning to escape overflow-hidden parents) */}
+        {slashOpen && slashRect && (
+          <div style={{
+            position: "fixed",
+            top: slashRect.top - 8,
+            left: slashRect.left,
+            width: slashRect.width,
+            transform: "translateY(-100%)",
+            zIndex: 9999,
+            background: "var(--bg)", border: "1px solid var(--border)",
+            borderRadius: 8, boxShadow: "0 -2px 16px rgba(0,0,0,0.12)",
+            maxHeight: 260, overflowY: "auto",
+          }}>
+            {slashLoading ? (
+              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-dim)" }}>Loading skills…</div>
+            ) : filteredSlashSkills.length === 0 ? (
+              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-dim)" }}>No matching skills</div>
+            ) : (
+              filteredSlashSkills.slice(0, 20).map((skill, i) => (
+                <button
+                  key={skill.name}
+                  onMouseDown={(e) => { e.preventDefault(); insertSlashSkill(skill.name); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", padding: "7px 14px",
+                    background: i === slashIdx ? "var(--bg-selected)" : "none",
+                    border: "none",
+                    color: i === slashIdx ? "var(--text)" : "var(--text-muted)",
+                    cursor: "pointer", fontSize: 12, textAlign: "left",
+                  }}
+                  onMouseEnter={() => setSlashIdx(i)}
+                >
+                  <span style={{
+                    fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600,
+                    color: "var(--accent)", flexShrink: 0,
+                  }}>
+                    /{skill.name}
+                  </span>
+                  {skill.description && (
+                    <span style={{
+                      fontSize: 11, color: "var(--text-dim)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {skill.description}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
         {/* Main input */}
         <div
           style={{
+            position: "relative",
             display: "flex",
             gap: 8,
             alignItems: "center",

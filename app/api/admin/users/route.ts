@@ -79,7 +79,7 @@ export async function PUT(req: Request) {
   if (body.password?.trim()) {
     updates.passwordHash = await hashPassword(body.password.trim());
   }
-  if (body.role) updates.role = body.role;
+  if (body.role === "admin" || body.role === "user") updates.role = body.role;
   if (body.displayName !== undefined) updates.displayName = body.displayName.trim();
   if (body.department !== undefined) updates.department = body.department.trim();
   if (body.position !== undefined) updates.position = body.position.trim();

@@ -159,11 +159,15 @@ function normalizeUser(u: Partial<UserRow> & { id: string; username: string }): 
   };
 }
 
+function isValidUsersData(v: unknown): v is UsersData {
+  if (typeof v !== "object" || v === null) return false;
+  return Array.isArray((v as Record<string, unknown>).users);
+}
+
 function getAllUsers(): UserRow[] {
   ensureInit();
-  const data = readJson<UsersData>("users_db.json", { users: [] });
-  const users = Array.isArray(data.users) ? data.users : [];
-  return users.map(normalizeUser);
+  const data = readJson<UsersData>("users_db.json", { users: [] }, isValidUsersData);
+  return data.users.map(normalizeUser);
 }
 
 function findUserByUsername(username: string): UserRow | undefined {

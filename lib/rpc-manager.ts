@@ -293,7 +293,8 @@ export async function startRpcSession(
   sessionFile: string,
   cwd: string,
   toolNames?: string[],
-  userRole?: string
+  userRole?: string,
+  userId?: string,
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const registry = getRegistry();
   const locks = getLocks();
@@ -338,6 +339,19 @@ export async function startRpcSession(
     // the only way to truly clear it is to call agent.setSystemPrompt directly.
     if (toolNames?.length === 0) {
       inner.agent.state.systemPrompt = "";
+    }
+
+    // Inject current user identity into system prompt
+    if (userId) {
+      const basePrompt = inner.agent.state.systemPrompt ?? "";
+      const userNotice = [
+        "",
+        "---",
+        `[SYSTEM] Current user ID: ${userId}${userRole ? ` (role: ${userRole})` : ""}`,
+        "Use this ID to identify the user in logs, memory, and personalization.",
+        "---",
+      ].join("\n");
+      inner.agent.state.systemPrompt = userNotice + "\n" + basePrompt;
     }
 
     // Inject role-aware system prompt for regular users

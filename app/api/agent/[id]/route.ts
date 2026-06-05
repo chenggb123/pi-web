@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
+import { getCurrentUser } from "@/lib/user-auth";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 // POST /api/agent/[id] - Send a command to an existing session
@@ -27,7 +28,8 @@ export async function POST(
 
     const cwd = SessionManager.open(filePath).getHeader()?.cwd ?? process.cwd();
 
-    const { session } = await startRpcSession(id, filePath, cwd);
+    const user = getCurrentUser(req);
+    const { session } = await startRpcSession(id, filePath, cwd, undefined, user?.role, user?.id);
     const result = await session.send(body);
 
     return NextResponse.json({ success: true, data: result });

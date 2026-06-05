@@ -552,6 +552,28 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
   return null;
 }
 
+// File path patterns for detecting inline code that represents a file
+const FILE_EXT_RE = /\.(tsx?|jsx?|json|mdx?|css|html?|py|rs|go|java|rb|php|sh|bash|zsh|yml|yaml|toml|xml|svg|sql|graphql|vue|svelte|prisma|env|txt|log|csv|pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot)$/i;
+const PATH_SEP_RE = /[\\/]/;
+const ABS_PATH_RE = /^(?:\/|[A-Za-z]:[\\/])/;
+
+function looksLikeFilePath(text: string): boolean {
+  if (!text || text.length > 300) return false;
+  // Must have a file extension or look like a directory path
+  const hasExt = FILE_EXT_RE.test(text);
+  const hasSep = PATH_SEP_RE.test(text);
+  if (!hasSep) return false;
+  if (!hasExt) {
+    // Could be a directory path or file without extension — must be absolute
+    return ABS_PATH_RE.test(text) && text.length > 5;
+  }
+  return true;
+}
+
+function openFilePath(filePath: string) {
+  window.dispatchEvent(new CustomEvent("pi-open-file", { detail: { filePath } }));
+}
+
 function TextBlock({ block }: { block: TextContent }) {
   return (
     <div className="markdown-body">
@@ -564,6 +586,33 @@ function TextBlock({ block }: { block: TextContent }) {
             const isBlock = className?.includes("language-") || raw.includes("\n");
             if (isBlock) {
               return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
+            }
+            // Inline code: check if it looks like a file path -> make clickable
+            if (looksLikeFilePath(raw)) {
+              const fileName = raw.split(/[\\/]/).pop() || raw;
+              return (
+                <button
+                  onClick={() => openFilePath(raw)}
+                  title={`Open ${raw}`}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                    padding: "1px 5px", margin: "0 1px",
+                    background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)",
+                    borderRadius: 4, cursor: "pointer",
+                    fontFamily: "var(--font-mono)", fontSize: "0.88em",
+                    color: "var(--accent)", verticalAlign: "middle",
+                    transition: "background 0.12s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(37,99,235,0.14)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(37,99,235,0.06)"; }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  {fileName}
+                </button>
+              );
             }
             return (
               <code
@@ -581,7 +630,6 @@ function TextBlock({ block }: { block: TextContent }) {
             );
           },
           pre({ children }) {
-            // Unwrap <pre> wrapper — CodeBlock handles its own container
             return <>{children}</>;
           },
         }}

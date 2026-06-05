@@ -276,6 +276,19 @@ export function AppShell() {
     });
   }, [fileTabs]);
 
+  // Listen for file-open events from MessageView (clickable file paths in AI responses)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      if (detail?.filePath) {
+        const fileName = detail.filePath.split(/[\\/]/).pop() || detail.filePath;
+        handleOpenFile(detail.filePath, fileName);
+      }
+    };
+    window.addEventListener("pi-open-file", handler);
+    return () => window.removeEventListener("pi-open-file", handler);
+  }, [handleOpenFile]);
+
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
   const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;

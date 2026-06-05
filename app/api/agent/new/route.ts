@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     }
 
     const tempKey = `__new__${Date.now()}`;
-    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, effectiveToolNames, user?.role);
+    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, effectiveToolNames, user?.role, user?.id);
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)
     // in sync so the new cwd is immediately readable via /api/files. Without this,
