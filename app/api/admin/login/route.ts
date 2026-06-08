@@ -67,6 +67,24 @@ export async function POST(req: Request) {
   }
 
   const token = createSession(user.id);
+
+  // Trigger opportunistic WeChat sync (fire-and-forget)
+  try {
+    const { isSyncDue, syncWeChatUsersAsync } = await import("@/lib/wechat-sync");
+    if (isSyncDue()) {
+      const { existsSync, readFileSync } = await import("fs");
+      const { join } = await import("path");
+      const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
+      const sp = join(getAgentDir(), "app-settings.json");
+      if (existsSync(sp)) {
+        const settings = JSON.parse(readFileSync(sp, "utf8")) as { wechatEnabled?: boolean; wechatCorpId?: string; wechatCorpSecret?: string };
+        if (settings.wechatEnabled) {
+          syncWeChatUsersAsync(settings);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
   return Response.json(
     { success: true },
     { status: 200, headers: { "Set-Cookie": makeSessionCookie(token) } },

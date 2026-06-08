@@ -29,6 +29,8 @@ export interface Role {
 export interface UserRow {
   id: string; username: string; password_hash: string; role_id: string; created_at: string;
   display_name: string; department: string; position: string; phone: string; avatar: string;
+  wechat_user_id?: string;
+  deactivated?: boolean;
 }
 interface SessionEntry { token: string; user_id: string; expires: number; }
 
@@ -156,6 +158,8 @@ function normalizeUser(u: Partial<UserRow> & { id: string; username: string }): 
     role_id: u.role_id ?? "user", created_at: u.created_at ?? new Date().toISOString(),
     display_name: u.display_name ?? "", department: u.department ?? "",
     position: u.position ?? "", phone: u.phone ?? "", avatar: u.avatar ?? "",
+    wechat_user_id: u.wechat_user_id,
+    deactivated: u.deactivated ?? false,
   };
 }
 
@@ -182,7 +186,7 @@ function findUserById(id: string): UserRow | undefined {
 
 function createUser(
   username: string, password_hash: string, role_id: string,
-  opts?: { display_name?: string; department?: string; position?: string; phone?: string; avatar?: string },
+  opts?: { display_name?: string; department?: string; position?: string; phone?: string; avatar?: string; wechat_user_id?: string },
 ): UserRow {
   ensureInit();
   const data = readJson<UsersData>("users_db.json", { users: [] });
@@ -190,13 +194,14 @@ function createUser(
     id: crypto.randomUUID(), username, password_hash, role_id, created_at: new Date().toISOString(),
     display_name: opts?.display_name ?? "", department: opts?.department ?? "",
     position: opts?.position ?? "", phone: opts?.phone ?? "", avatar: opts?.avatar ?? "",
+    wechat_user_id: opts?.wechat_user_id,
   };
   data.users.push(user);
   writeJson("users_db.json", data);
   return user;
 }
 
-function updateUser(id: string, updates: { username?: string; password_hash?: string; role_id?: string; display_name?: string; department?: string; position?: string; phone?: string; avatar?: string }): boolean {
+function updateUser(id: string, updates: { username?: string; password_hash?: string; role_id?: string; display_name?: string; department?: string; position?: string; phone?: string; avatar?: string; wechat_user_id?: string; deactivated?: boolean }): boolean {
   ensureInit();
   const data = readJson<UsersData>("users_db.json", { users: [] });
   const user = data.users.find((u) => u.id === id);
@@ -209,6 +214,8 @@ function updateUser(id: string, updates: { username?: string; password_hash?: st
   if (updates.position !== undefined) user.position = updates.position;
   if (updates.phone !== undefined) user.phone = updates.phone;
   if (updates.avatar !== undefined) user.avatar = updates.avatar;
+  if (updates.wechat_user_id !== undefined) user.wechat_user_id = updates.wechat_user_id;
+  if (updates.deactivated !== undefined) user.deactivated = updates.deactivated;
   writeJson("users_db.json", data);
   return true;
 }
@@ -226,9 +233,40 @@ function deleteUser(id: string): boolean {
   return true;
 }
 
+function findUserByWechatUserId(wechatUserId: string): UserRow | undefined {
+  const u = getAllUsers().find((u) => u.wechat_user_id === wechatUserId);
+  return u ? normalizeUser(u) : undefined;
+}
+
 function hasUsers(): boolean {
   ensureInit();
   return getAllUsers().length > 0;
+}
+
+// ── Sync state operations ─────────────────────────────────────────────────────
+
+interface WechatSyncState {
+  lastSyncAt: string;
+  lastSyncStatus: "success" | "error";
+  lastSyncMessage: string;
+  syncCountCreated: number;
+  syncCountUpdated: number;
+  syncCountDeactivated: number;
+}
+
+function readSyncState(): WechatSyncState {
+  return readJson<WechatSyncState>("wechat-sync-state.json", {
+    lastSyncAt: "",
+    lastSyncStatus: "success",
+    lastSyncMessage: "Never synced",
+    syncCountCreated: 0,
+    syncCountUpdated: 0,
+    syncCountDeactivated: 0,
+  });
+}
+
+function writeSyncState(state: WechatSyncState): void {
+  writeJson("wechat-sync-state.json", state);
 }
 
 // ── Session operations ─────────────────────────────────────────────────────────
@@ -270,6 +308,10 @@ async function migrateFromJson(): Promise<void> {
 
 export {
   getAllRoles, saveRole, deleteRole, getUserRole, hasPermission, getDefaultRoleId,
-  getAllUsers, findUserByUsername, findUserById, createUser, updateUser, deleteUser, hasUsers,
+  getAllUsers, findUserByUsername, findUserById, findUserByWechatUserId,
+  createUser, updateUser, deleteUser, hasUsers,
   createSession, validateSession, destroySession, migrateFromJson,
+  readSyncState, writeSyncState,
 };
+
+export type { WechatSyncState };

@@ -14,6 +14,8 @@ export interface User {
   position: string;
   phone: string;
   avatar: string; // base64 data URL
+  wechatUserId?: string;
+  deactivated?: boolean;
 }
 
 export interface Role {
@@ -70,6 +72,8 @@ function toUser(u: db.UserRow): User {
   return {
     id: u.id, username: u.username, passwordHash: u.password_hash, role: u.role_id, createdAt: u.created_at,
     displayName: u.display_name, department: u.department, position: u.position, phone: u.phone, avatar: u.avatar,
+    wechatUserId: u.wechat_user_id,
+    deactivated: u.deactivated,
   };
 }
 
@@ -146,6 +150,50 @@ export function canManageUsers(userId: string): boolean {
 
 export function getMaxToolPreset(userId: string): "full" | "default" {
   return db.hasPermission(userId, "agent:full_tools") ? "full" : "default";
+}
+
+// ── WeChat Work ───────────────────────────────────────────────────────────────
+
+export function findUserByWechatUserId(wechatUserId: string): User | undefined {
+  const u = db.findUserByWechatUserId(wechatUserId);
+  return u ? toUser(u) : undefined;
+}
+
+export function findOrCreateWechatUser(
+  wechatUserId: string,
+  profile: { name?: string; department?: string; position?: string; phone?: string; avatar?: string },
+): User {
+  const existing = db.findUserByWechatUserId(wechatUserId);
+  if (existing) {
+    // Reactivate if previously deactivated
+    if (existing.deactivated) {
+      db.updateUser(existing.id, { deactivated: false });
+    }
+    // Update profile fields from WeChat
+    db.updateUser(existing.id, {
+      display_name: profile.name ?? existing.display_name,
+      department: profile.department ?? existing.department,
+      position: profile.position ?? existing.position,
+      phone: profile.phone ?? existing.phone,
+      avatar: profile.avatar ?? existing.avatar,
+    });
+    return toUser(db.findUserByWechatUserId(wechatUserId)!);
+  }
+  // Create new user
+  const defaultRole = db.getDefaultRoleId();
+  const u = db.createUser(wechatUserId, "", defaultRole, {
+    display_name: profile.name ?? wechatUserId,
+    department: profile.department,
+    position: profile.position,
+    phone: profile.phone,
+    avatar: profile.avatar,
+    wechat_user_id: wechatUserId,
+  });
+  return toUser(u);
+}
+
+export function deactivateUser(userId: string): boolean {
+  return db.updateUser(userId, { deactivated: true });
 }
 
 // ── Session Management ─────────────────────────────────────────────────────────

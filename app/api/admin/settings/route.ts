@@ -5,8 +5,12 @@ import { requireRole, getCurrentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
-interface AppSettings {
+export interface AppSettings {
   appName?: string;
+  wechatCorpId?: string;
+  wechatCorpSecret?: string;
+  wechatAgentId?: string;
+  wechatEnabled?: boolean;
 }
 
 function getSettingsPath(): string {
@@ -42,6 +46,23 @@ export async function PUT(req: Request) {
 
   const current = readSettings();
   if (body.appName !== undefined) current.appName = body.appName?.trim() || undefined;
+  if (body.wechatCorpId !== undefined) current.wechatCorpId = body.wechatCorpId.trim() || undefined;
+  if (body.wechatCorpSecret !== undefined) current.wechatCorpSecret = body.wechatCorpSecret.trim() || undefined;
+  if (body.wechatAgentId !== undefined) current.wechatAgentId = body.wechatAgentId.trim() || undefined;
+  if (body.wechatEnabled !== undefined) current.wechatEnabled = body.wechatEnabled;
   writeSettings(current);
+  // Clear WeChat token cache when settings change
+  try {
+    const { clearTokenCache } = await import("@/lib/wechat-sync");
+    clearTokenCache();
+  } catch { /* ignore if wechat modules not loaded */ }
+
+  // Trigger initial sync when WeChat is first enabled
+  if (body.wechatEnabled && current.wechatCorpId && current.wechatCorpSecret) {
+    try {
+      const { syncWeChatUsersAsync } = await import("@/lib/wechat-sync");
+      syncWeChatUsersAsync(current);
+    } catch { /* ignore */ }
+  }
   return Response.json({ success: true, settings: current });
 }

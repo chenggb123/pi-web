@@ -64,9 +64,21 @@ function ensureWorkspaceInit(user: User, workspace: string): void {
 export async function GET(req: Request) {
   const needsSetup = !hasUsers();
   const user = getCurrentUser(req);
+  // Check if WeChat Work login is enabled
+  let wechatEnabled = false;
+  try {
+    const { readFileSync, existsSync } = await import("fs");
+    const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
+    const { join } = await import("path");
+    const settingsPath = join(getAgentDir(), "app-settings.json");
+    if (existsSync(settingsPath)) {
+      const raw = JSON.parse(readFileSync(settingsPath, "utf8")) as { wechatEnabled?: boolean };
+      wechatEnabled = raw.wechatEnabled === true;
+    }
+  } catch { /* ignore */ }
 
   if (!user) {
-    return Response.json({ authenticated: false, needsSetup });
+    return Response.json({ authenticated: false, needsSetup, wechatEnabled });
   }
 
   const workspace = getUserWorkspace(user);

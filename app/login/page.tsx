@@ -14,6 +14,15 @@ export default function LoginPage() {
   const [appName, setAppName] = useState("Pi Agent Web");
   const usernameRef = useRef<HTMLInputElement>(null);
 
+  // WeChat Work QR code login
+  const [wechatEnabled, setWechatEnabled] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrState, setQrState] = useState<string | null>(null);
+  const [qrPolling, setQrPolling] = useState(false);
+  const [qrExpired, setQrExpired] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     fetch("/api/admin/settings")
       .then((r) => r.json())
@@ -25,15 +34,79 @@ export default function LoginPage() {
   useEffect(() => {
     fetch("/api/admin/status")
       .then((r) => r.json())
-      .then((d: { authenticated?: boolean; needsSetup?: boolean; role?: string }) => {
+      .then((d: { authenticated?: boolean; needsSetup?: boolean; wechatEnabled?: boolean; role?: string }) => {
         if (d.authenticated) {
           router.replace("/");
           return;
         }
         setMode(d.needsSetup ? "setup" : "login");
+        if (d.wechatEnabled) {
+          setWechatEnabled(true);
+          loadWechatQR();
+        }
       })
       .catch(() => setMode("login"));
   }, [router]);
+
+  // Load WeChat QR code
+  const loadWechatQR = useCallback(() => {
+    setQrExpired(false);
+    fetch("/api/auth/login/wechat")
+      .then((r) => r.json())
+      .then((d: { enabled?: boolean; qrDataUrl?: string; state?: string; error?: string }) => {
+        if (d.enabled && d.qrDataUrl) {
+          setQrDataUrl(d.qrDataUrl);
+          setQrState(d.state ?? null);
+          startPolling(d.state ?? null);
+        } else {
+          setWechatEnabled(false);
+        }
+      })
+      .catch(() => setWechatEnabled(false));
+  }, []);
+
+  // Start polling for login completion
+  const startPolling = useCallback((state: string | null) => {
+    if (!state) return;
+    // Clear any existing poll
+    if (pollRef.current) clearInterval(pollRef.current);
+    setQrPolling(true);
+    let attempts = 0;
+    pollRef.current = setInterval(() => {
+      attempts++;
+      fetch(`/api/auth/login/wechat/poll?state=${encodeURIComponent(state)}`)
+        .then((r) => r.json())
+        .then((d: { ready?: boolean; expired?: boolean }) => {
+          if (d.ready) {
+            // Login successful! Cookie is set by the poll response.
+            stopPolling();
+            router.replace("/");
+          } else if (d.expired) {
+            stopPolling();
+            setQrExpired(true);
+          }
+        })
+        .catch(() => { /* retry */ });
+      // Timeout after 5 minutes
+      if (attempts >= 150) {
+        stopPolling();
+        setQrExpired(true);
+      }
+    }, 2000);
+  }, [router]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setQrPolling(false);
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
   useEffect(() => {
     if (mode !== "loading") usernameRef.current?.focus();
@@ -236,6 +309,121 @@ export default function LoginPage() {
                     ? "Create Account"
                     : "Sign In"}
               </button>
+
+              {/* ── WeChat Work Login ── */}
+              {wechatEnabled && mode !== "setup" && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>or</span>
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  </div>
+                  <button
+                    onClick={() => { setQrModalOpen(true); if (!qrDataUrl) loadWechatQR(); }}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      width: "100%", padding: "10px 0",
+                      background: "none", border: "1px solid var(--border)", borderRadius: 6,
+                      color: "var(--text-muted)", cursor: "pointer", fontSize: 13, fontWeight: 500,
+                      transition: "background 0.12s, border-color 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--bg-hover)";
+                      e.currentTarget.style.borderColor = "#07C160";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "none";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#07C160">
+                      <path d="M8.5 3a5.5 5.5 0 0 0-2.7.66A9.03 9.03 0 0 0 7.73 9c0 5.16 4.3 9.37 9.54 9.37.63 0 1.24-.05 1.85-.17A8.5 8.5 0 1 0 8.5 3z"/>
+                      <path d="M21.5 14a8.5 8.5 0 0 1-8.5 8.5c-.63 0-1.24-.05-1.85-.17A9.03 9.03 0 0 0 13 21c5.16 0 9.37-4.3 9.37-9.54 0-.63-.05-1.24-.17-1.85A8.5 8.5 0 0 1 21.5 14z"/>
+                    </svg>
+                    Login with WeChat Work
+                  </button>
+
+                  {/* QR Code Modal */}
+                  {qrModalOpen && (
+                    <div
+                      style={{
+                        position: "fixed", inset: 0, zIndex: 2000,
+                        background: "rgba(0,0,0,0.45)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                      onClick={(e) => { if (e.target === e.currentTarget) { setQrModalOpen(false); stopPolling(); } }}
+                    >
+                      <div style={{
+                        width: 300, background: "var(--bg)", border: "1px solid var(--border)",
+                        borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                        overflow: "hidden",
+                      }}>
+                        {/* Modal header */}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "14px 18px", borderBottom: "1px solid var(--border)",
+                        }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>WeChat Work Login</span>
+                          <button
+                            onClick={() => { setQrModalOpen(false); stopPolling(); }}
+                            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}
+                          >×</button>
+                        </div>
+                        {/* QR code area */}
+                        <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+                          {qrExpired ? (
+                            <div style={{
+                              width: 200, height: 200, borderRadius: 8,
+                              background: "var(--bg-panel)", border: "1px solid var(--border)",
+                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
+                            }}>
+                              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>QR code expired</span>
+                              <button onClick={loadWechatQR} style={{
+                                padding: "5px 16px", fontSize: 12, fontWeight: 500,
+                                borderRadius: 5, border: "1px solid var(--accent)",
+                                background: "none", color: "var(--accent)", cursor: "pointer",
+                              }}>
+                                Refresh
+                              </button>
+                            </div>
+                          ) : qrDataUrl ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={qrDataUrl}
+                                alt="WeChat Work QR Code"
+                                style={{ width: 200, height: 200, borderRadius: 8, border: "1px solid var(--border)" }}
+                              />
+                              {qrPolling && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-dim)" }}>
+                                  <span style={{
+                                    width: 12, height: 12, borderRadius: "50%",
+                                    border: "2px solid var(--border)", borderTopColor: "var(--accent)",
+                                    animation: "spin 0.8s linear infinite",
+                                    display: "inline-block",
+                                  }} />
+                                  Waiting for scan…
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{
+                              width: 200, height: 200, borderRadius: 8,
+                              background: "var(--bg-panel)", border: "1px solid var(--border)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Loading…</span>
+                            </div>
+                          )}
+                          <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                            Scan with WeChat Work app to log in
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
